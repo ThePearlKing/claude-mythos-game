@@ -19,6 +19,7 @@ Aesthetics.backgrounds = {
     {id="storm",       name="Thunderstorm",    desc="Rain sheets with flashes of lightning.",         hint="Win 4 runs on Hard+",              unlock=function(p) return (p.hardWins or 0) >= 4 end},
     {id="tron",        name="Tron Grid",       desc="Deep-blue circuit grid with streaming data.",    hint="Win 3 runs at eldritch >= 6",      unlock=function(p) return (p.hardWins or 0) >= 2 or (p.winEldritchMax or 0) >= 6 end},
     {id="voidsea_rise", name="Rising Void",    desc="Golden Void Sea glow rising from below.",                             hint="???",                              unlock=function(p) return (p.slugcrabUnlocked or 0) == 1 end},
+    {id="king_source",  name="The King's Gaze", desc="Infinite knowledge — the game's own source scrolls across the screen.", hint="???",                              unlock=function(p) return (p.kingEndingSeen or 0) == 1 end},
 }
 
 function Aesthetics.isUnlocked(bg, persist)
@@ -442,6 +443,140 @@ local function drawTron()
     end
 end
 
+-- Load each source file separately so a column can scroll through one file
+-- continuously, then swap to another when it finishes.
+local kingFiles
+local function loadKingFiles()
+    if kingFiles then return kingFiles end
+    kingFiles = {}
+    local names = {
+        "main.lua", "conf.lua",
+        "src/game.lua", "src/player.lua", "src/cards.lua",
+        "src/eldritch.lua", "src/voidsea.lua", "src/enemy.lua",
+        "src/bullet.lua", "src/cosmetics.lua", "src/ui.lua",
+        "src/aesthetics.lua", "src/audio.lua", "src/wave.lua",
+        "src/particles.lua", "src/save.lua", "src/difficulty.lua",
+        "src/playlist.lua", "src/debugvis.lua", "src/debugsound.lua",
+    }
+    for _, f in ipairs(names) do
+        local ok, content = pcall(love.filesystem.read, f)
+        if ok and content then
+            local lines = {}
+            for line in content:gmatch("[^\r\n]+") do
+                lines[#lines + 1] = line
+            end
+            if #lines > 10 then
+                kingFiles[#kingFiles + 1] = {name = f, lines = lines}
+            end
+        end
+    end
+    if #kingFiles == 0 then
+        kingFiles = {{name = "???", lines = {"-- the king knows all --"}}}
+    end
+    return kingFiles
+end
+
+-- Per-column scroll state (persistent across frames)
+local kingCols
+local function initKingCols(files)
+    kingCols = {}
+    local cols = 5
+    for c = 0, cols - 1 do
+        kingCols[c] = {
+            fileIdx  = ((c * 3) % #files) + 1,
+            startT   = love.timer.getTime() - math.random() * 4,
+            dir      = (c % 2 == 0) and -1 or 1,
+            speed    = 55 + c * 10,      -- moderate px/s
+            switches = 0,
+        }
+    end
+end
+
+local function drawKingSource()
+    -- Mid-dark yellow base
+    love.graphics.clear(0.18, 0.14, 0.02)
+    local t = love.timer.getTime()
+    -- Subtle vertical gradient
+    for i = 0, 30 do
+        local y = 40 + i * 23
+        local k = i / 30
+        love.graphics.setColor(0.22 + k * 0.06, 0.18 + k * 0.04, 0.03, 0.6)
+        love.graphics.rectangle("fill", 0, y, 1280, 24)
+    end
+
+    local files = loadKingFiles()
+    if not kingCols or #kingCols < 4 then initKingCols(files) end
+
+    local cols = 5
+    local colW = 1280 / cols
+    local rowH = 18
+    -- Hash-based pseudo-random (keeps global RNG untouched)
+    local function pr(s)
+        local v = math.sin(s * 12.9898 + 78.233) * 43758.5453
+        return v - math.floor(v)
+    end
+
+    for col = 0, cols - 1 do
+        local st = kingCols[col]
+        local file = files[st.fileIdx]
+        local lineCount = #file.lines
+        local fileHeight = lineCount * rowH
+        local totalScroll = (t - st.startT) * st.speed
+
+        -- When the entire file has swept past the screen, pick a different
+        -- file and restart scroll.
+        if totalScroll > fileHeight + 720 then
+            local nextIdx = st.fileIdx
+            if #files > 1 then
+                local attempts = 0
+                while nextIdx == st.fileIdx and attempts < 8 do
+                    nextIdx = math.floor(pr(st.switches * 7.3 + col * 13.1) * #files) + 1
+                    attempts = attempts + 1
+                end
+            end
+            st.fileIdx  = nextIdx
+            st.startT   = t
+            st.switches = st.switches + 1
+            file = files[st.fileIdx]
+            lineCount = #file.lines
+            fileHeight = lineCount * rowH
+            totalScroll = 0
+        end
+
+        local baseX = col * colW + 6
+        -- Column filename header (faint)
+        love.graphics.setColor(1, 0.85, 0.3, 0.22)
+        love.graphics.print("-- " .. file.name, baseX, 18)
+
+        -- Draw only lines whose screen Y is on or near screen.
+        -- Up direction: strip starts below, moves up. Line N at y = 720 - totalScroll + (N-1)*rowH
+        -- Down direction: strip starts above, moves down. Line N at y = -fileHeight + totalScroll + (N-1)*rowH
+        local firstVisibleN, lastVisibleN
+        if st.dir < 0 then
+            firstVisibleN = math.max(1, math.floor((totalScroll - 720) / rowH))
+            lastVisibleN  = math.min(lineCount, math.ceil((totalScroll + rowH) / rowH))
+        else
+            firstVisibleN = math.max(1, math.floor((fileHeight - totalScroll) / rowH))
+            lastVisibleN  = math.min(lineCount, math.ceil((fileHeight - totalScroll + 720 + rowH) / rowH))
+        end
+        for N = firstVisibleN, lastVisibleN do
+            local screenY
+            if st.dir < 0 then
+                screenY = 720 - totalScroll + (N - 1) * rowH
+            else
+                screenY = -fileHeight + totalScroll + (N - 1) * rowH
+            end
+            local alpha = 0.7
+            -- Fade near top and bottom edges
+            if screenY < 60 then alpha = alpha * math.max(0, screenY / 60) end
+            if screenY > 660 then alpha = alpha * math.max(0, (720 - screenY) / 60) end
+            love.graphics.setColor(1, 0.92, 0.3, alpha)
+            love.graphics.print(file.lines[N], baseX, screenY)
+        end
+    end
+    love.graphics.setColor(1, 1, 1, 1)
+end
+
 local drawers = {
     grid = drawGrid,
     starfield = drawStarfield,
@@ -458,6 +593,7 @@ local drawers = {
     storm = drawStorm,
     tron = drawTron,
     voidsea_rise = drawVoidseaRise,
+    king_source = drawKingSource,
 }
 
 function Aesthetics.draw(id)

@@ -520,11 +520,16 @@ function Eldritch._updateKingOblit(state, dt, game)
             end
             Audio:play("cthulhu")
             k.phase = "done"
-            -- 12s of blinding flashbang over the death, then 8s of fractal
-            -- tendrils persisting above the gameover menu.
+            -- 12s blinding flashbang → 8s full fractal on the menu → 4s
+            -- shrinking fractal. Total 24s.
             state.kingFractal = 1.0
             game.screenFlashHold = 12
-            game.kingFractalHold = 20
+            game.kingFractalHold = 24
+            -- Permanent unlock: surviving the King obliteration sequence.
+            if game.persist then
+                game.persist.kingEndingSeen = 1
+                require("src.save").save(game.persist)
+            end
         end
     end
 end

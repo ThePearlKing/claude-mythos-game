@@ -92,11 +92,12 @@ function love.draw()
             globalWarp = 0.55
             globalSpeed = 0.3
         elseif lvl >= 25 then
+            -- Toned down — past 25 used to be chaos, now stays manageable
             local wild = lvl - 25
-            strength  = 3.0 + wild * 0.3
-            maxRadius = 900 + wild * 150
-            speed     = 0.7 + wild * 0.12
-            ringCount = math.min(10, 5 + wild)
+            strength  = 0.9 + wild * 0.08
+            maxRadius = 420 + wild * 60
+            speed     = 0.45 + wild * 0.04
+            ringCount = math.min(5, 3 + math.floor(wild / 2))
         elseif lvl >= 24 then
             strength, maxRadius, speed, ringCount = 2.2, 720, 0.6, 4
         elseif lvl >= 20 then
@@ -130,6 +131,11 @@ function love.draw()
         sh:send("cB", {GAME_W, 0})
         sh:send("cC", {0, GAME_H})
         sh:send("cD", {GAME_W, GAME_H})
+        -- Fifth ripple source at the vanishing point — Churgly's "black hole"
+        -- center where his three serpent forms converge.
+        sh:send("cE", {GAME_W * 0.5, GAME_H * 0.5})
+        -- Void only ripples within ~8px (twice the void ring radius of ~4)
+        sh:send("cERadius", 8)
         sh:send("globalWarp", globalWarp)
         sh:send("globalSpeed", globalSpeed)
         love.graphics.setShader(sh)

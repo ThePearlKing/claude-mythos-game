@@ -32,8 +32,9 @@ function Game:load()
         return love.graphics.newShader([[
             extern number t;
             extern number strength;
-            extern vec2 cA; extern vec2 cB; extern vec2 cC; extern vec2 cD;
+            extern vec2 cA; extern vec2 cB; extern vec2 cC; extern vec2 cD; extern vec2 cE;
             extern number maxRadius;
+            extern number cERadius;
             extern number speed;
             extern number ringCount;
             extern number globalWarp;
@@ -41,21 +42,24 @@ function Game:load()
             vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
                 vec2 ss = love_ScreenSize.xy;
                 vec2 offs = vec2(0.0);
-                vec2 corners[4];
-                corners[0] = cA; corners[1] = cB; corners[2] = cC; corners[3] = cD;
-                for (int ci = 0; ci < 4; ci++) {
+                vec2 corners[5];
+                corners[0] = cA; corners[1] = cB; corners[2] = cC; corners[3] = cD; corners[4] = cE;
+                for (int ci = 0; ci < 5; ci++) {
                     vec2 delta = sc - corners[ci];
                     float dist = length(delta);
                     if (dist > 1.0) {
                         vec2 dir = delta / dist;
+                        // cE (the vanish point) uses a much smaller radius so
+                        // ripples there only cover a tiny halo around the void.
+                        float thisMaxR = (ci == 4) ? cERadius : maxRadius;
+                        float thisRingW = (ci == 4) ? 6.0 : 80.0;
                         for (int ri = 0; ri < 10; ri++) {
                             if (float(ri) >= ringCount) break;
                             float phase = mod(t * speed + float(ri) / max(ringCount, 1.0) + float(ci) * 0.25, 1.0);
-                            float ringR = phase * maxRadius;
-                            float ringW = 80.0;
+                            float ringR = phase * thisMaxR;
                             float d = abs(dist - ringR);
-                            if (d < ringW) {
-                                float amp = (1.0 - d / ringW) * (1.0 - phase) * strength;
+                            if (d < thisRingW) {
+                                float amp = (1.0 - d / thisRingW) * (1.0 - phase) * strength;
                                 offs += dir * amp * 34.0 * sin(d * 0.08);
                             }
                         }
@@ -718,9 +722,12 @@ function Game:draw()
 
     ::overlay::
     -- King obliteration: persistent fractal tendrils rendered ABOVE whatever
-    -- menu or state the player is in (until kingFractalHold expires).
+    -- menu or state the player is in. Hold is 24s total: first 20s at full
+    -- intensity (12s covered by flashbang + 8s visible on menu), then the
+    -- final 4s ramp the intensity from 1 → 0 so the tendrils shrink away.
     if self.kingFractalHold and self.kingFractalHold > 0 and self.player and self.player.eldritch then
-        self.player.eldritch.kingFractal = 1.0
+        local intensity = math.min(1, self.kingFractalHold / 4)
+        self.player.eldritch.kingFractal = intensity
         Eldritch._drawKingFractal(self.player.eldritch)
     end
 

@@ -592,10 +592,21 @@ function Player:dash()
     end
     local l = math.sqrt(dx*dx + dy*dy)
     dx, dy = dx/l, dy/l
+    local preX, preY = self.x, self.y
     self.x = self.x + dx * 180
     self.y = self.y + dy * 180
     self.x = math.max(self.r, math.min(1280 - self.r, self.x))
     self.y = math.max(self.r + 40, math.min(720 - self.r, self.y))
+    -- Drag the slug tail along with the teleport so it doesn't stretch across
+    -- the screen from old position to new.
+    if self.slugTailHistory then
+        local ddx, ddy = self.x - preX, self.y - preY
+        for _, pos in ipairs(self.slugTailHistory) do
+            pos.x = pos.x + ddx
+            pos.y = pos.y + ddy
+        end
+    end
+    self._prevMoveX, self._prevMoveY = self.x, self.y
     self.invuln = math.max(0.3, self.dashInvuln or 0.3)
     self.dashCD = self.dashMax
     Audio:play("dash")
