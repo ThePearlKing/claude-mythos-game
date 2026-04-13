@@ -178,6 +178,11 @@ function love.mousereleased(x, y, button)
 end
 
 function love.wheelmoved(x, y)
+    -- love.js forwards raw WheelEvent.deltaY (often 100+ pixels per tick)
+    -- instead of the ±1 ticks native LÖVE sends. Clamp so the web build
+    -- scrolls at the same pace as the desktop build.
+    if y > 1 then y = 1 elseif y < -1 then y = -1 end
+    if x > 1 then x = 1 elseif x < -1 then x = -1 end
     if Game.state == "custom" then
         Game.customScroll = (Game.customScroll or 0) - y
     elseif Game.state == "customise" then
