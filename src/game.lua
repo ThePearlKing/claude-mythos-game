@@ -1,0 +1,1455 @@
+local Player = require("src.player")
+local Enemy = require("src.enemy")
+local Bullet = require("src.bullet")
+local Cards = require("src.cards")
+local Wave = require("src.wave")
+local UI = require("src.ui")
+local Audio = require("src.audio")
+local P = require("src.particles")
+local Eldritch = require("src.eldritch")
+local Save = require("src.save")
+local Difficulty = require("src.difficulty")
+local Playlist = require("src.playlist")
+local Aesthetics = require("src.aesthetics")
+local Voidsea = require("src.voidsea")
+
+local Game = {}
+
+function Game:load()
+    self.state = "menu" -- menu, wave, cards, gameover, victory, paused
+    self.prevState = nil
+    self.bigFont = love.graphics.newFont(42)
+    self.titleFont = love.graphics.newFont(72)
+    self.font = love.graphics.newFont(18)
+    self.smallFont = love.graphics.newFont(14)
+    love.graphics.setFont(self.font)
+    UI:init(self.bigFont, self.font, self.smallFont, self.titleFont)
+    Audio:load()
+    -- Ripple displacement pipeline: if the GPU supports canvases + shaders,
+    -- we'll render the frame to a canvas and warp it with a fragment shader
+    -- to produce REAL pixel displacement. Overlay rings are suppressed then.
+    local shaderOK, shader = pcall(function()
+        return love.graphics.newShader([[
+            extern number t;
+            extern number strength;
+            extern vec2 cA; extern vec2 cB; extern vec2 cC; extern vec2 cD;
+            extern number maxRadius;
+            extern number speed;
+            extern number ringCount;
+            extern number globalWarp;
+            extern number globalSpeed;
+            vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+                vec2 ss = love_ScreenSize.xy;
+                vec2 offs = vec2(0.0);
+                vec2 corners[4];
+                corners[0] = cA; corners[1] = cB; corners[2] = cC; corners[3] = cD;
+                for (int ci = 0; ci < 4; ci++) {
+                    vec2 delta = sc - corners[ci];
+                    float dist = length(delta);
+                    if (dist > 1.0) {
+                        vec2 dir = delta / dist;
+                        for (int ri = 0; ri < 10; ri++) {
+                            if (float(ri) >= ringCount) break;
+                            float phase = mod(t * speed + float(ri) / max(ringCount, 1.0) + float(ci) * 0.25, 1.0);
+                            float ringR = phase * maxRadius;
+                            float ringW = 80.0;
+                            float d = abs(dist - ringR);
+                            if (d < ringW) {
+                                float amp = (1.0 - d / ringW) * (1.0 - phase) * strength;
+                                offs += dir * amp * 34.0 * sin(d * 0.08);
+                            }
+                        }
+                    }
+                }
+                // Global uniform warp — two interfering sine fields so pixels
+                // drift everywhere on the screen, not just near corners.
+                if (globalWarp > 0.001) {
+                    float tg = t * globalSpeed;
+                    float wx = sin((sc.x + tg * 40.0) * 0.016) * cos((sc.y - tg * 28.0) * 0.014);
+                    float wy = cos((sc.x - tg * 35.0) * 0.019) * sin((sc.y + tg * 50.0) * 0.017);
+                    offs.x += wx * globalWarp * 10.0;
+                    offs.y += wy * globalWarp * 10.0;
+                }
+                vec2 warped = (sc + offs) / ss;
+                return Texel(tex, warped) * color;
+            }
+        ]])
+    end)
+    if shaderOK and shader then
+        self.rippleShader = shader
+        self.frameCanvas = love.graphics.newCanvas(1280, 720)
+    end
+    self.persist = Save.load()
+    -- Apply saved volumes
+    Audio.masterVol = self.persist.masterVol or 1.0
+    Audio.musicVol  = self.persist.musicVol or 1.0
+    Audio.sfxVol    = self.persist.sfxVol or 1.0
+    -- Apply saved theme (build the one the player has selected)
+    Audio:setTheme(self.persist.theme or Playlist.defaultId())
+    self:resetGame()
+end
+
+function Game:resetGame()
+    local cfg = self.customConfig or {}
+    self.player = Player.new(640, 360, cfg, self.persist)
+    -- Apply player-side custom multipliers
+    if cfg.playerDmgMult then self.player.stats.damage = self.player.stats.damage * cfg.playerDmgMult end
+    if cfg.playerFireRateMult then self.player.stats.fireRate = self.player.stats.fireRate * cfg.playerFireRateMult end
+    if cfg.playerSpeedMult then self.player.speed = self.player.speed * cfg.playerSpeedMult end
+    if cfg.playerBulletSpeedMult then self.player.stats.bulletSpeed = self.player.stats.bulletSpeed * cfg.playerBulletSpeedMult end
+    if cfg.scoreMult then self.player.stats.scoreMult = self.player.stats.scoreMult * cfg.scoreMult end
+    if cfg.dashCooldown then self.player.dashMax = cfg.dashCooldown end
+    if cfg.startingReputation then self.player.reputation = cfg.startingReputation end
+    if cfg.startingCards and cfg.startingCards > 0 then
+        local pool = Cards.pick(cfg.startingCards, 1, self.player)
+        for _, c in ipairs(pool) do c.apply(self.player); table.insert(self.player.cardsTaken, c) end
+    end
+    self.enemies = {}
+    self.bullets = {}
+    self.enemyBullets = {}
+    self.pendingSpawns = {}
+    self.shockwaves = {}
+    self.wave = cfg.startWave and (cfg.startWave - 1) or 0
+    self.finalWave = cfg.finalWave or 20
+    -- Normal-run infinite-mode toggle overrides finalWave when enabled
+    if (not self.customConfig) and self.persist and self.persist.infiniteMode == 1 then
+        self.finalWave = 0
+    end
+    self.enemyHpMult = cfg.enemyHpMult or 1.0
+    self.enemyDmgMult = cfg.enemyDmgMult or 1.0
+    self.spawnCountMult = cfg.spawnCountMult or 1.0
+    -- Fold in global difficulty for normal runs
+    if self.difficultyApplied then
+        self.enemyHpMult = self.enemyHpMult * self.difficultyApplied.enemyHp
+        self.enemyDmgMult = self.enemyDmgMult * self.difficultyApplied.enemyDmg
+        self.spawnCountMult = self.spawnCountMult * self.difficultyApplied.spawnCount
+        local bonus = self.difficultyApplied.playerHpBonus or 0
+        if bonus > 0 then
+            self.player.maxHp = self.player.maxHp + bonus
+            self.player.hp = self.player.maxHp
+        end
+    end
+    self.disableEldritch = cfg.disableEldritch or false
+    self.isCustom = (self.customConfig ~= nil)
+    self.waveMessage = ""
+    self.bannerTime = 0
+    self.cardChoices = {}
+    self.cardArmTime = 0
+    self.endTime = 0
+    self.waveStartHp = self.player.hp
+    self.waveDamageTaken = 0
+    self.waveEnemiesKilled = 0
+    self.waveScoreStart = 0
+    self.finalStatsRecorded = false
+    P:clear()
+end
+
+function Game:startRun(customConfig)
+    self.customConfig = customConfig
+    -- If not a custom run, fold the selected difficulty into enemy/player mults
+    if not customConfig then
+        local diff = Difficulty.get(self.persist.difficulty)
+        self.difficultyApplied = diff
+    else
+        self.difficultyApplied = nil
+    end
+    -- 1/50 chance the run becomes haunted (shrimp spirits intrude)
+    self.haunted = (math.random() < 0.02) and not customConfig
+    self.shrimpTimer = 0
+    self:resetGame()
+    self.state = "wave"
+    self:beginWave((self.wave or 0) + 1)
+    Audio:playMusic("normal")
+end
+
+-- Cashing out of infinite mode: treat a voluntary quit/return-to-menu as a "win"
+-- so you bank your reputation, streak, kills, eldritch max, everything. Only applies
+-- to non-custom infinite runs where you've actually played at least 1 wave.
+function Game:cashOutInfinite()
+    if not self.isCustom
+        and self.finalWave == 0
+        and (self.wave or 0) >= 3   -- must have cleared at least wave 2 to bank
+        and not self.finalStatsRecorded then
+        self:recordRunResult(true)
+        local P = require("src.particles")
+        P:text(640, 200, "★ PROGRESS BANKED ★", {0.5, 1, 0.6}, 3)
+    end
+end
+
+-- Push end-of-run stats into persistent save (rep/streak skipped in custom mode).
+-- Kills & eldritch progress still persist (they drive cosmetic unlocks).
+function Game:recordRunResult(isWin)
+    if self.finalStatsRecorded then return end
+    self.finalStatsRecorded = true
+    -- Eldritch max applies from any run (custom or not)
+    local elvl = (self.player.eldritch and self.player.eldritch.level) or 0
+    if elvl > (self.persist.eldritchMax or 0) then self.persist.eldritchMax = elvl end
+    -- Win-at-eldritch tracking drives the eldritch-win cosmetic unlocks
+    if isWin and elvl > (self.persist.winEldritchMax or 0) then
+        self.persist.winEldritchMax = elvl
+    end
+    -- Deepest wave reached (for infinite-mode unlocks)
+    if (self.wave or 0) > (self.persist.deepestWave or 0) then
+        self.persist.deepestWave = self.wave
+    end
+    -- Difficulty-tiered win counters — used for harder unlocks
+    if isWin and self.difficultyApplied then
+        local id = self.difficultyApplied.id
+        if id == "hard" or id == "nightmare" or id == "apocalypse" then
+            self.persist.hardWins = (self.persist.hardWins or 0) + 1
+        end
+        if id == "nightmare" or id == "apocalypse" then
+            self.persist.nightmareWins = (self.persist.nightmareWins or 0) + 1
+        end
+        if id == "apocalypse" then
+            self.persist.apocalypseWins = (self.persist.apocalypseWins or 0) + 1
+        end
+    end
+    Save.save(self.persist)
+    if self.isCustom then return end
+    self.persist.totalRuns = (self.persist.totalRuns or 0) + 1
+    if isWin then
+        self.persist.winStreak = (self.persist.winStreak or 0) + 1
+        self.persist.totalWins = (self.persist.totalWins or 0) + 1
+        if self.persist.winStreak > (self.persist.bestStreak or 0) then
+            self.persist.bestStreak = self.persist.winStreak
+        end
+    else
+        -- Infinite mode deaths don't break your win streak — you're grinding, not trying to win.
+        if self.finalWave and self.finalWave > 0 then
+            self.persist.winStreak = 0
+        end
+    end
+    -- Global reputation drifts toward run's reputation, weighted by progress
+    local runRep = self.player.reputation
+    local progress = math.min(1, self.wave / math.max(1, self.finalWave))
+    local weight = 0.25 + progress * 0.25 -- 25-50% blend
+    if isWin then weight = weight + 0.1 end
+    local g = self.persist.globalRep or 50
+    g = g * (1 - weight) + runRep * weight
+    self.persist.globalRep = math.max(0, math.min(100, g))
+    Save.save(self.persist)
+end
+
+function Game:beginWave(w)
+    self.wave = w
+    -- Sweep out leftover optional entities (drifting debris) before the next wave
+    for i = #self.enemies, 1, -1 do
+        if self.enemies[i].optional then table.remove(self.enemies, i) end
+    end
+    for i = #self.pendingSpawns, 1, -1 do
+        if self.pendingSpawns[i].optional then table.remove(self.pendingSpawns, i) end
+    end
+    local isFinal = (w == self.finalWave)
+    local enemies, isBoss = Wave.build(w, self.finalWave, self.enemyHpMult, self.spawnCountMult, self.enemyDmgMult, self.player and self.player.veilEnemyBoost or 1)
+    self.isBossWave = isBoss
+    for _, e in ipairs(enemies) do
+        e.spawnDelay = e.spawnDelay or 0
+        table.insert(self.pendingSpawns, e)
+    end
+    self.waveMessage = isBoss and "The final enemy approaches..." or (#enemies .. " threats incoming")
+    self.bannerTime = 2.2
+    self.waveStartHp = self.player.hp
+    self.waveDamageTaken = 0
+    self.waveBigHitDamage = 0
+    self.waveEnemiesKilled = 0
+    self.waveScoreStart = self.player.score
+    self.player.stats.barrierUsed = false
+
+    -- Rebirth Shell: +maxHp each wave
+    if self.player.rebirthPerWave and self.player.rebirthPerWave > 0 then
+        self.player.maxHp = self.player.maxHp + self.player.rebirthPerWave
+        self.player.hp = math.min(self.player.maxHp, self.player.hp + self.player.rebirthPerWave)
+    end
+    -- Reset wave-scoped counters
+    self.player._waveCompKills = 0
+    self.player.waveRunTime = 0
+
+    -- Corrupted Data random effect
+    if self.player.corruptedData then
+        local r = math.random(1, 6)
+        local s = self.player.stats
+        if r == 1 then s.damage = s.damage * 1.1
+        elseif r == 2 then s.fireRate = s.fireRate * 1.08
+        elseif r == 3 then self.player.speed = self.player.speed * 1.05
+        elseif r == 4 then s.crit = s.crit + 0.03
+        elseif r == 5 then self.player.maxHp = self.player.maxHp + 5; self.player.hp = self.player.hp + 5
+        else s.damage = s.damage * 0.95 end
+        P:text(self.player.x, self.player.y - 40, "CORRUPTED!", {0.5,0.2,0.8}, 1.5)
+    end
+
+    Audio:play("wave")
+    if self.haunted and w == 1 then
+        P:text(640, 160, "★ THIS RUN IS HAUNTED ★", {1, 0.7, 0.85}, 4)
+    end
+    if self.player.eldritch.level >= Eldritch.THRESH_CTHULHU then
+        Audio:playMusic("eldritch")
+    elseif isBoss then
+        Audio:playMusic("boss")
+    elseif self.player.eldritch.level >= Eldritch.THRESH_GHOSTS then
+        Audio:playMusic("eldritch")
+    else
+        Audio:playMusic("normal")
+    end
+end
+
+function Game:endWave()
+    -- Reputation penalty is based on UNRECOVERED HP at wave end, not cumulative
+    -- damage taken. If you got hit but healed back before the wave ended, no penalty.
+    -- If you finish hurt, the debt counts.
+    local deficit = math.max(0, (self.waveStartHp or self.player.maxHp) - self.player.hp)
+    local dmgFrac = deficit / math.max(1, self.player.maxHp)
+    local repChange
+    if self.waveDamageTaken == 0 then repChange = 10       -- truly flawless
+    elseif dmgFrac <= 0.0 then repChange = 6               -- took hits but fully recovered
+    elseif dmgFrac < 0.10 then repChange = 3
+    elseif dmgFrac < 0.25 then repChange = 1
+    elseif dmgFrac < 0.50 then repChange = -2
+    elseif dmgFrac < 0.80 then repChange = -5
+    else repChange = -9 end
+    -- Bonus for kill efficiency
+    if self.waveEnemiesKilled > 10 and dmgFrac < 0.2 then repChange = repChange + 1 end
+    if self.finalWave and self.wave == self.finalWave then repChange = repChange + 20 end
+    if repChange > 0 and self.player.repBonusMult then
+        repChange = repChange * self.player.repBonusMult
+    end
+    -- Difficulty scaling: harder modes reward more reputation; easier modes penalize
+    if self.difficultyApplied and self.difficultyApplied.repMult then
+        repChange = repChange * self.difficultyApplied.repMult
+    end
+    -- CURSE: each eldritch level costs a little reputation per wave
+    -- (forbidden knowledge taints your standing, but lightly)
+    local eldritchLvl = (self.player.eldritch and self.player.eldritch.level) or 0
+    if eldritchLvl > 0 then
+        local curse = eldritchLvl * 0.3
+        repChange = repChange - curse
+        if curse >= 1 then
+            P:text(self.player.x, self.player.y + 30,
+                string.format("-%.0f rep (eldritch)", curse), {0.7, 0.3, 0.9}, 1.5)
+        end
+    end
+    self.player.reputation = math.max(0, math.min(100, self.player.reputation + repChange))
+
+    local scoreGain = (self.waveScoreStart and (self.player.score - self.waveScoreStart) or 0)
+    self.waveRepChange = repChange
+    self.waveScoreGained = scoreGain
+
+    -- finalWave == 0 means infinite mode (no victory trigger)
+    if self.finalWave and self.finalWave > 0 and self.wave >= self.finalWave then
+        self.state = "victory"
+        self.endTime = 0
+        self:recordRunResult(true)
+        Audio:play("victory")
+        Audio:stopMusic()
+        return
+    end
+
+    -- Offer cards
+    local count = 3 + (self.player.stats.extraCards or 0)
+    self.player.stats.extraCards = 0 -- reset grimoire bonus after use
+    self.cardChoices = Cards.pick(count, self.wave, self.player, self.disableEldritch, self.finalWave)
+    self.cardArmTime = 0.7 -- cannot click for 0.7s to prevent accidental selection
+    self.state = "cards"
+    Audio:play("card")
+end
+
+function Game:onKill(enemy, source)
+    local sm = (source and source.stats and source.stats.scoreMult) or 1
+    local gain = math.floor(enemy.score * sm)
+    self.player.score = self.player.score + gain
+    self.waveEnemiesKilled = self.waveEnemiesKilled + 1
+    P:text(enemy.x, enemy.y - 10, "+"..gain, {1,0.9,0.3}, 0.8)
+    -- Track lifetime kills (even in custom — unlocks are per-player progression)
+    self.persist.totalKills = (self.persist.totalKills or 0) + 1
+    if enemy.typeName == "shrimp_spirit" then
+        self.persist.shrimpKills = (self.persist.shrimpKills or 0) + 1
+    end
+    if enemy.isBoss then
+        self.persist.bossKills = (self.persist.bossKills or 0) + 1
+        -- Infinite-mode boss clears grant PARTIAL win credit so eldritch-win cosmetics
+        -- (Churgly body etc.) are reachable. We blend globalRep and update
+        -- winEldritchMax, but we do NOT bump winStreak/totalWins/bestStreak — those
+        -- are reserved for actually winning the run.
+        if not self.isCustom and self.finalWave == 0 then
+            local elvl = (self.player.eldritch and self.player.eldritch.level) or 0
+            if elvl > (self.persist.winEldritchMax or 0) then
+                self.persist.winEldritchMax = elvl
+            end
+            if elvl > (self.persist.eldritchMax or 0) then
+                self.persist.eldritchMax = elvl
+            end
+            -- Rep blend: partial weight toward current run rep
+            local runRep = self.player.reputation
+            local weight = 0.25
+            local g = self.persist.globalRep or 50
+            g = g * (1 - weight) + runRep * weight
+            self.persist.globalRep = math.max(0, math.min(100, g))
+            Save.save(self.persist)
+            P:text(enemy.x, enemy.y - 40, "BOSS CLEARED", {1, 0.85, 0.2}, 2.5)
+        end
+    end
+
+    local p = self.player
+    -- Hunger of the Deep: permanent maxHp growth
+    if p.killGrowth and p.killGrowth > 0 then
+        p.maxHp = p.maxHp + p.killGrowth
+        p.hp = math.min(p.maxHp, p.hp + p.killGrowth)
+    end
+    -- Flurry on kill: queue instant shots
+    if p.flurryOnKill then p.flurryShots = (p.flurryShots or 0) + 3 end
+    -- Compound interest wave-kill counter
+    if p.compoundInterest then p._waveCompKills = (p._waveCompKills or 0) + 1 end
+    -- Kill siphon: random chance to add extra card next wave
+    if p.cardFromKill and math.random() < p.cardFromKill then
+        p.stats.extraCards = (p.stats.extraCards or 0) + 1
+    end
+end
+
+function Game:update(dt)
+    P:update(dt)
+    if self.state == "debugvis" then
+        require("src.debugvis").update(self, dt)
+    end
+    if self.state == "debugsound" then
+        require("src.debugsound").update(self, dt)
+    end
+    -- King obliteration flashbang: during the long "hold" the flash stays
+    -- pinned at 1.0 (12s blinding white). When the hold expires, the flash
+    -- fades slowly. Persistent fractal tendrils timer also ticks here so
+    -- they can render above the gameover menu.
+    if self.screenFlashHold and self.screenFlashHold > 0 then
+        self.screenFlashHold = self.screenFlashHold - dt
+        self.screenFlash = 1.0
+    elseif self.screenFlash and self.screenFlash > 0 then
+        self.screenFlash = math.max(0, self.screenFlash - dt * 0.8)
+    end
+    if self.kingFractalHold and self.kingFractalHold > 0 then
+        self.kingFractalHold = self.kingFractalHold - dt
+    end
+    if self.state == "voidsea" then
+        Voidsea.update(dt, self)
+        return
+    end
+    if self.state ~= "wave" then
+        if self.state == "cards" then
+            self.cardArmTime = math.max(0, (self.cardArmTime or 0) - dt)
+        elseif self.state == "gameover" or self.state == "victory" then
+            self.endTime = (self.endTime or 0) + dt
+        end
+        -- Scroll smoothing — lerp displayed scroll toward target each frame.
+        local function smooth(key)
+            local cur = self[key] or 0
+            local target = self[key .. "Target"] or cur
+            self[key] = cur + (target - cur) * math.min(1, dt * 18)
+        end
+        smooth("customiseScroll")
+        smooth("customScroll")
+        smooth("playlistScroll")
+        smooth("aestheticsScroll")
+        -- Active drag: relative-drag — scroll target tracks the cursor's delta
+        -- from the initial press, preserving where you grabbed the thumb.
+        if self.scrollDrag then
+            local _, my = love.mouse.getPosition()
+            local d = self.scrollDrag
+            local usable = math.max(1, d.trackH - d.thumbH)
+            local delta = (my - d.startMouseY) * (d.maxScroll / usable)
+            local target = d.startScroll + delta
+            if target < 0 then target = 0 end
+            if target > d.maxScroll then target = d.maxScroll end
+            self[d.key] = target
+        end
+        return
+    end
+
+    -- Secret: if the player has taken Void Sea and is pressing S at the bottom edge, dive.
+    if self.player.voidSeaUnlocked and love.keyboard.isDown("s") and self.player.y >= (720 - self.player.r - 2) then
+        Voidsea.enter(self)
+        return
+    end
+
+    -- Eldritch update
+    Eldritch.update(self.player.eldritch, dt, self)
+
+    -- Haunted: shrimp spirits drift in mid-wave
+    if self.haunted and self.state == "wave" then
+        self.shrimpTimer = (self.shrimpTimer or 0) - dt
+        if self.shrimpTimer <= 0 then
+            self.shrimpTimer = 4 + math.random() * 5
+            local side = math.random(1, 4)
+            local x, y
+            if side == 1 then x = math.random(0, 1280); y = 60
+            elseif side == 2 then x = math.random(0, 1280); y = 720
+            elseif side == 3 then x = 20; y = math.random(80, 700)
+            else x = 1260; y = math.random(80, 700) end
+            local s = Enemy.new("shrimp_spirit", x, y, 1 + self.wave * 0.1)
+            s.dmg = s.dmg * 1.2
+            table.insert(self.enemies, s)
+            P:text(640, 120, "A shrimp spirit drifts in...", {1, 0.7, 0.85}, 2)
+        end
+    end
+
+    -- WAVE UPDATE
+    self.bannerTime = math.max(0, self.bannerTime - dt)
+
+    local p = self.player
+
+    -- Coffee curse HP drain. Only clamps to 1 if the curse itself would kill you
+    -- mid-drain — never overrides damage from other sources (Cthulhu, enemies, etc.).
+    if p.coffeeCurse and p.hp > 0 then
+        local newHp = p.hp - dt
+        if newHp <= 0 then
+            p.hp = 1 -- the curse alone leaves you at the brink but doesn't kill
+        else
+            p.hp = newHp
+        end
+    end
+
+    -- Pending enemy spawns
+    for i = #self.pendingSpawns, 1, -1 do
+        local e = self.pendingSpawns[i]
+        e.spawnDelay = e.spawnDelay - dt
+        if e.spawnDelay <= 0 then
+            table.insert(self.enemies, e)
+            table.remove(self.pendingSpawns, i)
+        end
+    end
+
+    p:update(dt, self)
+    if p.hp <= 0 then
+        self.state = "gameover"
+        self.endTime = 0
+        self:recordRunResult(false)
+        Audio:play("defeat")
+        Audio:stopMusic()
+        return
+    end
+
+    -- Track damage taken. We separately track BIG-hit damage (single events
+    -- exceeding 20% of max HP) so that chip damage you heal back doesn't ding
+    -- reputation — only big hits you couldn't dodge, and persistent HP loss.
+    local prevHp = self._prevHp or p.hp
+    if p.hp < prevHp then
+        local delta = prevHp - p.hp
+        local ignore = self._ignoreDmgThisFrame or 0
+        delta = math.max(0, delta - ignore)
+        self.waveDamageTaken = self.waveDamageTaken + delta
+        if delta >= p.maxHp * 0.20 then
+            self.waveBigHitDamage = (self.waveBigHitDamage or 0) + delta
+        end
+    end
+    self._ignoreDmgThisFrame = 0
+    self._prevHp = p.hp
+
+    -- Update enemies
+    for i = #self.enemies, 1, -1 do
+        local e = self.enemies[i]
+        e:update(dt, self)
+        if e.dead then
+            table.remove(self.enemies, i)
+        end
+    end
+
+    -- Update player bullets
+    for i = #self.bullets, 1, -1 do
+        local b = self.bullets[i]
+        -- jam check
+        if b.jamChecked == nil then
+            b.jamChecked = true
+            if p.jamChance and math.random() < p.jamChance then
+                table.remove(self.bullets, i)
+                goto continuebl
+            end
+        end
+        b:update(dt, self)
+        for _, e in ipairs(self.enemies) do
+            if not b.hit[e] then
+                local d2 = (e.x - b.x)^2 + (e.y - b.y)^2
+                if d2 < (e.r + b.size)^2 then
+                    b:onHit(e, self)
+                    if b.dead then break end
+                end
+            end
+        end
+        if b.dead then table.remove(self.bullets, i) end
+        ::continuebl::
+    end
+
+    -- Update shockwaves (visual only; damage is applied at spawn in bullet.lua)
+    for i = #self.shockwaves, 1, -1 do
+        local sw = self.shockwaves[i]
+        sw.life = sw.life - dt
+        local t = 1 - sw.life / 0.35
+        sw.r = sw.max * t
+        if sw.life <= 0 then table.remove(self.shockwaves, i) end
+    end
+
+    -- Update enemy bullets
+    for i = #self.enemyBullets, 1, -1 do
+        local b = self.enemyBullets[i]
+        b:update(dt, self)
+        local d2 = (p.x - b.x)^2 + (p.y - b.y)^2
+        if d2 < (p.r + b.size)^2 then
+            local hpBefore = p.hp
+            p:takeDamage(b.damage, nil)
+            -- Don't count OpenClaw bullet damage toward reputation (there's way too many)
+            if b.fromBoss then
+                self._ignoreDmgThisFrame = (self._ignoreDmgThisFrame or 0) + (hpBefore - p.hp)
+            end
+            b.dead = true
+        end
+        if b.dead then table.remove(self.enemyBullets, i) end
+    end
+
+    -- Wave end: no REQUIRED enemies remaining. Optional entities (drifting debris) don't block completion.
+    local requiredAlive = 0
+    for _, e in ipairs(self.enemies) do if not e.optional then requiredAlive = requiredAlive + 1 end end
+    local requiredPending = 0
+    for _, e in ipairs(self.pendingSpawns) do if not e.optional then requiredPending = requiredPending + 1 end end
+    -- Churgly'nth's King obliteration locks the wave — no completion allowed
+    -- while He is targeting the player.
+    local oblitActive = self.player and self.player.eldritch and self.player.eldritch.kingOblit
+    if requiredAlive == 0 and requiredPending == 0 and self.bannerTime <= 0 and not oblitActive then
+        self:endWave()
+    end
+end
+
+function Game:draw()
+    -- Show/hide OS cursor depending on state
+    if self.state == "wave" or self.state == "cards" or self.state == "paused" then
+        love.mouse.setVisible(false)
+    else
+        love.mouse.setVisible(true)
+    end
+    love.graphics.clear(0.08, 0.06, 0.12)
+    -- Background (aesthetic-driven)
+    local bgId = (self.persist and self.persist.background) or Aesthetics.defaultId()
+    Aesthetics.draw(bgId)
+
+    -- Menu states render their UI then jump to the ::overlay:: label so the
+    -- king-fractal persistence (and any other top-level overlays) still paint
+    -- above them.
+    if self.state == "menu" then
+        love.graphics.setFont(self.titleFont)
+        UI:drawMenu(self)
+        love.graphics.setFont(self.font)
+        goto overlay
+    elseif self.state == "custom" then
+        UI:drawCustom(self); goto overlay
+    elseif self.state == "options" then
+        UI:drawOptions(self); goto overlay
+    elseif self.state == "slots" then
+        UI:drawSlots(self); goto overlay
+    elseif self.state == "resetdata" then
+        UI:drawResetData(self); goto overlay
+    elseif self.state == "playlist" then
+        UI:drawPlaylist(self); goto overlay
+    elseif self.state == "aesthetics" then
+        UI:drawAesthetics(self); goto overlay
+    elseif self.state == "customise" then
+        UI:drawCustomise(self); goto overlay
+    elseif self.state == "voidsea" then
+        Voidsea.draw(self); goto overlay
+    elseif self.state == "debugvis" then
+        require("src.debugvis").draw(self); goto overlay
+    elseif self.state == "debugsound" then
+        require("src.debugsound").draw(self); goto overlay
+    end
+
+    -- Eldritch back layer
+    Eldritch.drawBack(self.player.eldritch)
+    -- Yellow Void Sea surface at the bottom edge (only after taking the card)
+    Voidsea.drawSurface(self)
+
+    -- Entities
+    for _, e in ipairs(self.enemies) do e:draw() end
+    self.player:draw()
+    for _, b in ipairs(self.bullets) do b:draw() end
+    for _, b in ipairs(self.enemyBullets) do b:draw() end
+    -- Explosive shockwaves
+    for _, sw in ipairs(self.shockwaves or {}) do
+        local a = math.max(0, sw.life / 0.35)
+        love.graphics.setColor(sw.color[1], sw.color[2], sw.color[3], a * 0.7)
+        love.graphics.setLineWidth(6)
+        love.graphics.circle("line", sw.x, sw.y, sw.r)
+        love.graphics.setColor(1, 1, 0.6, a * 0.5)
+        love.graphics.setLineWidth(2)
+        love.graphics.circle("line", sw.x, sw.y, sw.r * 0.7)
+        love.graphics.setColor(sw.color[1], sw.color[2], sw.color[3], a * 0.22)
+        love.graphics.circle("fill", sw.x, sw.y, sw.r * 0.9)
+        love.graphics.setLineWidth(1)
+    end
+    P:draw()
+
+    -- Eldritch front layer (ghost crabs, tesseracts, Cthulhu)
+    Eldritch.drawFront(self.player.eldritch)
+    Eldritch.drawBeamOnPlayer(self.player.eldritch, self.player)
+
+    -- THE KING: hallucinations — transparent sprite ghosts flashing everywhere
+    -- plus streams of the game's own source code scrolling upward. Partial
+    -- vision block ("infinite knowledge").
+    if self.player and self.player.kingVisions then
+        self:drawKingVisions()
+    end
+
+    UI:drawHUD(self)
+    if self.bannerTime > 0 then
+        love.graphics.setFont(self.bigFont)
+        UI:drawWaveBanner(self)
+        love.graphics.setFont(self.font)
+    end
+
+    if self.state == "cards" then
+        love.graphics.setFont(self.bigFont)
+        UI:drawCardChoice(self)
+        love.graphics.setFont(self.font)
+    elseif self.state == "gameover" then
+        love.graphics.setFont(self.titleFont)
+        UI:drawGameOver(self)
+        love.graphics.setFont(self.font)
+    elseif self.state == "victory" then
+        love.graphics.setFont(self.titleFont)
+        UI:drawVictory(self)
+        love.graphics.setFont(self.font)
+    elseif self.state == "paused" then
+        love.graphics.setFont(self.bigFont)
+        UI:drawPaused(self)
+        love.graphics.setFont(self.font)
+    end
+
+    ::overlay::
+    -- King obliteration: persistent fractal tendrils rendered ABOVE whatever
+    -- menu or state the player is in (until kingFractalHold expires).
+    if self.kingFractalHold and self.kingFractalHold > 0 and self.player and self.player.eldritch then
+        self.player.eldritch.kingFractal = 1.0
+        Eldritch._drawKingFractal(self.player.eldritch)
+    end
+
+    -- King obliteration: full-screen flashbang. Held at 1.0 during the long
+    -- hold timer (12s), then fades slowly afterward.
+    if self.screenFlash and self.screenFlash > 0 then
+        love.graphics.setColor(1, 1, 1, math.min(1, self.screenFlash))
+        love.graphics.rectangle("fill", 0, 0, 1280, 720)
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
+    -- Custom cursor during gameplay
+    if self.state == "wave" or self.state == "cards" or self.state == "paused" then
+        local mx, my = love.mouse.getPosition()
+        love.graphics.setColor(0, 0, 0, 0.6)
+        love.graphics.circle("fill", mx + 1, my + 1, 5)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.circle("fill", mx, my, 4)
+        love.graphics.setColor(0, 0, 0, 0.8)
+        love.graphics.circle("line", mx, my, 4)
+        love.graphics.setColor(1, 1, 1, 0.5)
+        love.graphics.setLineWidth(1)
+        love.graphics.line(mx - 10, my, mx - 6, my)
+        love.graphics.line(mx + 6, my, mx + 10, my)
+        love.graphics.line(mx, my - 10, mx, my - 6)
+        love.graphics.line(mx, my + 6, mx, my + 10)
+    end
+end
+
+function Game:_loadKingSource()
+    local files = {
+        "main.lua", "src/game.lua", "src/player.lua", "src/cards.lua",
+        "src/eldritch.lua", "src/voidsea.lua", "src/enemy.lua",
+        "src/bullet.lua", "src/cosmetics.lua", "src/ui.lua",
+    }
+    local lines = {}
+    for _, f in ipairs(files) do
+        local ok, content = pcall(love.filesystem.read, f)
+        if ok and content then
+            for line in content:gmatch("[^\r\n]+") do
+                local trimmed = line:match("^%s*(.-)%s*$") or ""
+                if #trimmed > 4 and #trimmed < 110 then
+                    lines[#lines + 1] = trimmed
+                end
+            end
+        end
+    end
+    if #lines == 0 then lines[1] = "-- the king knows all --" end
+    self._kingSourceLines = lines
+end
+
+function Game:_drawKingKnowledge()
+    local p = self.player
+    if not p then return end
+    love.graphics.setFont(self.font)
+    love.graphics.setLineWidth(1)
+
+    -- Player hitbox + hidden timers readout
+    love.graphics.setColor(1, 0.9, 0.3, 0.7)
+    love.graphics.circle("line", p.x, p.y, p.r)
+    love.graphics.setColor(1, 0.9, 0.3, 0.25)
+    love.graphics.circle("line", p.x, p.y, p.r + 2)
+    local lines = {}
+    if p.invuln and p.invuln > 0 then lines[#lines+1] = string.format("INV %.2fs", p.invuln) end
+    if p.dashCD and p.dashCD > 0 then lines[#lines+1] = string.format("DASH %.2fs", p.dashCD) end
+    if p.bombCD and p.bombCD > 0 then lines[#lines+1] = string.format("BOMB %.2fs", p.bombCD) end
+    if p.railChargeTime and p.railChargeTime > 0 then lines[#lines+1] = string.format("RAIL %.2f", p.railChargeTime) end
+    if p.stats and p.stats.shield and p.stats.shield > 0 then lines[#lines+1] = string.format("SHIELD %d", p.stats.shield) end
+    for i, s in ipairs(lines) do
+        love.graphics.setColor(1, 0.9, 0.3, 0.9)
+        love.graphics.print(s, p.x + p.r + 6, p.y - 10 + (i - 1) * 14)
+    end
+
+    -- Enemies: hitbox, HP bar + numeric, AI state, next-move telegraph
+    for _, e in ipairs(self.enemies or {}) do
+        if not e.dead then
+            -- Hitbox
+            love.graphics.setColor(0.4, 1, 1, 0.75)
+            love.graphics.circle("line", e.x, e.y, e.r)
+
+            -- HP bar
+            if e.maxHp and e.maxHp > 0 then
+                local ratio = math.max(0, math.min(1, (e.hp or 0) / e.maxHp))
+                local bw, bh = math.max(40, e.r * 2), 5
+                local bx, by = e.x - bw / 2, e.y - e.r - 14
+                love.graphics.setColor(0, 0, 0, 0.7)
+                love.graphics.rectangle("fill", bx - 1, by - 1, bw + 2, bh + 2)
+                love.graphics.setColor(0.25 + (1 - ratio) * 0.75, 0.25 + ratio * 0.75, 0.2, 0.95)
+                love.graphics.rectangle("fill", bx, by, bw * ratio, bh)
+                love.graphics.setColor(1, 1, 1, 0.9)
+                love.graphics.print(string.format("%d/%d", math.floor(e.hp or 0), e.maxHp), bx, by - 14)
+            end
+
+            -- Name / AI
+            local label = e.typeName or (e.type and e.type.ai) or "?"
+            if e.isBoss then label = (e.name or "BOSS") .. " P" .. tostring(e.bossPhase or 1) end
+            love.graphics.setColor(0.6, 1, 1, 0.85)
+            love.graphics.print(label, e.x - e.r, e.y + e.r + 4)
+
+            -- Next-move telegraphs
+            local tel = nil
+            if e.chargeT and e.chargeT > 0 then
+                tel = string.format("SNIPE %.2f", e.chargeT)
+                -- Aim line toward player
+                local dx, dy = p.x - e.x, p.y - e.y
+                local len = math.sqrt(dx * dx + dy * dy)
+                if len > 1 then
+                    love.graphics.setColor(1, 0.3, 0.3, 0.35 + 0.4 * (1 - math.min(1, e.chargeT / 2.0)))
+                    love.graphics.setLineWidth(2)
+                    love.graphics.line(e.x, e.y, e.x + dx / len * 1400, e.y + dy / len * 1400)
+                    love.graphics.setLineWidth(1)
+                end
+            elseif e.blinkT and e.blinkT > 0 then
+                tel = string.format("BLINK %.2f", e.blinkT)
+            elseif e.exploding and e.exploding > 0 then
+                tel = string.format("DETONATE %.2f", e.exploding)
+                love.graphics.setColor(1, 0.3, 0.2, 0.4)
+                love.graphics.circle("line", e.x, e.y, 60)
+            elseif e.shootTimer and e.shootTimer > 0 and e.shootTimer < 2.5 then
+                tel = string.format("FIRE %.1f", e.shootTimer)
+            end
+            if tel then
+                love.graphics.setColor(1, 0.7, 0.3, 0.9)
+                love.graphics.print(tel, e.x - e.r, e.y + e.r + 16)
+            end
+
+            -- Status
+            local st = {}
+            if e.freezeTime and e.freezeTime > 0 then st[#st+1] = "FRZ" end
+            if e.burnTime and e.burnTime > 0 then st[#st+1] = "BRN" end
+            if #st > 0 then
+                love.graphics.setColor(0.7, 0.9, 1, 0.85)
+                love.graphics.print(table.concat(st, " "), e.x - e.r, e.y + e.r + 28)
+            end
+        end
+    end
+
+    -- Pending spawns: crosshair + countdown at spawn location
+    for _, e in ipairs(self.pendingSpawns or {}) do
+        if e.x and e.y then
+            local a = 0.35 + 0.35 * math.abs(math.sin(love.timer.getTime() * 5))
+            love.graphics.setColor(1, 0.4, 0.8, a)
+            love.graphics.setLineWidth(1)
+            love.graphics.circle("line", e.x, e.y, 10)
+            love.graphics.line(e.x - 14, e.y, e.x + 14, e.y)
+            love.graphics.line(e.x, e.y - 14, e.x, e.y + 14)
+            if e.spawnDelay and e.spawnDelay > 0 then
+                love.graphics.setColor(1, 0.5, 0.9, 0.95)
+                love.graphics.print(string.format("%.1f", e.spawnDelay), e.x + 14, e.y - 6)
+            end
+        end
+    end
+
+    -- Friendly bullets: hitbox + velocity hint
+    for _, b in ipairs(self.bullets or {}) do
+        if not b.dead then
+            love.graphics.setColor(0.5, 1, 0.5, 0.55)
+            love.graphics.circle("line", b.x, b.y, (b.size or 3) + 1)
+            if b.vx and b.vy then
+                love.graphics.setColor(0.5, 1, 0.5, 0.35)
+                love.graphics.line(b.x, b.y, b.x + b.vx * 0.08, b.y + b.vy * 0.08)
+            end
+        end
+    end
+
+    -- Enemy bullets: hitbox + incoming vector (brighter = danger)
+    for _, b in ipairs(self.enemyBullets or {}) do
+        if not b.dead then
+            love.graphics.setColor(1, 0.35, 0.35, 0.8)
+            love.graphics.circle("line", b.x, b.y, (b.size or 3) + 1)
+            if b.vx and b.vy then
+                love.graphics.setColor(1, 0.35, 0.35, 0.45)
+                love.graphics.line(b.x, b.y, b.x + b.vx * 0.12, b.y + b.vy * 0.12)
+            end
+            if b.damage then
+                love.graphics.setColor(1, 0.7, 0.5, 0.9)
+                love.graphics.print(tostring(math.floor(b.damage)), b.x + 6, b.y - 6)
+            end
+        end
+    end
+
+    -- Void Sea secret trigger reveal (if unlocked)
+    if p.voidSeaUnlocked then
+        local closeness = math.max(0, math.min(1, (p.y - 540) / 160))
+        love.graphics.setColor(1, 0.9, 0.3, 0.5)
+        love.graphics.setLineWidth(1)
+        love.graphics.line(0, 540, 1280, 540)
+        love.graphics.setColor(1, 0.9, 0.3, 0.85)
+        love.graphics.print("DIVE TRIGGER Y>540", 10, 524)
+        love.graphics.print(string.format("CLOSENESS %.2f  DIVE@0.45", closeness), 10, 544)
+        if closeness > 0.45 then
+            love.graphics.setColor(1, 1, 0.4, 0.95)
+            love.graphics.print("HOLD S NOW", p.x - 30, p.y - 40)
+        end
+    end
+
+    -- Eldritch value — big, prominent, always clear under King's vision.
+    if p.eldritch then
+        local lvl = p.eldritch.level or 0
+        love.graphics.setFont(self.titleFont or self.bigFont or self.font)
+        love.graphics.setColor(0, 0, 0, 0.6)
+        love.graphics.printf(string.format("ELD %d", lvl), 2, 4, 1280, "center")
+        love.graphics.setColor(1, 0.9, 0.35, 1)
+        love.graphics.printf(string.format("ELD %d", lvl), 0, 2, 1280, "center")
+        love.graphics.setFont(self.font)
+
+        -- Threshold readout (top-right, smaller — still informative)
+        local thr = {
+            {5, "WHISPERS"}, {9, "DISTORT"}, {13, "GHOSTS"}, {15, "RIPPLES"},
+            {17, "TESSERACT"}, {20, "CHURGLY"}, {22, "CTHULHU"}, {25, "KILL"},
+        }
+        for i, tp in ipairs(thr) do
+            local reached = lvl >= tp[1]
+            love.graphics.setColor(reached and 1 or 0.45, reached and 0.85 or 0.45, 0.4, reached and 0.95 or 0.55)
+            love.graphics.print(string.format("%2d %s", tp[1], tp[2]), 1180, 70 + (i - 1) * 13)
+        end
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setLineWidth(1)
+end
+
+function Game:drawKingVisions()
+    if not self._kingSourceLines then self:_loadKingSource() end
+    local lines = self._kingSourceLines
+    local n = #lines
+    local t = love.timer.getTime()
+    local W, H = 1280, 720
+
+    -- "INFINITE KNOWLEDGE" reveal layer: expose hitboxes, HP, AI state, next
+    -- moves, pending spawns, and hidden triggers. Drawn BEFORE the source
+    -- code / ghost layers so the hallucinations slightly veil the readout.
+    self:_drawKingKnowledge()
+
+    -- Fast deterministic pseudo-random from a seed (keeps global RNG clean)
+    local function pr(s)
+        local v = math.sin(s * 12.9898 + 78.233) * 43758.5453
+        return v - math.floor(v)
+    end
+
+    -- Streaming source code — 5 columns scrolling upward at different speeds.
+    love.graphics.setFont(self.font)
+    local cols = 5
+    local colW = W / cols
+    local rowH = 18
+    for col = 0, cols - 1 do
+        local baseX = col * colW + 6
+        local scrollSpeed = 1400 + col * 220
+        local offset = (t * scrollSpeed) % rowH
+        local seedShift = col * 9973
+        local chunk = math.floor(t * 1.5)
+        for row = -1, math.ceil(H / rowH) + 1 do
+            local ly = row * rowH - offset + (H % rowH)
+            if ly > -rowH and ly < H + rowH then
+                local idx = ((chunk + row * 31 + seedShift) % n) + 1
+                local line = lines[idx]
+                local a = 0.32 + 0.12 * math.sin(t * 4 + row * 0.4 + col * 1.7)
+                love.graphics.setColor(1, 0.88, 0.4, a)
+                love.graphics.print(line, baseX, ly)
+            end
+        end
+    end
+
+    -- Flickering sprite-ghosts: crabs, enemies, bullets, eyes, runes.
+    -- Time-bucketed so each ghost flashes fast and is replaced.
+    local bucketRate = 14
+    local bucket = math.floor(t * bucketRate)
+    local subT = t * bucketRate - bucket
+    local fade = 1 - subT
+    local ghostCount = 22
+    for i = 1, ghostCount do
+        local s = bucket * 1013 + i * 257
+        local gx = pr(s) * W
+        local gy = pr(s + 1) * H
+        local kind = math.floor(pr(s + 2) * 5) + 1
+        local alpha = fade * (0.32 + pr(s + 3) * 0.16)
+        if kind == 1 then
+            -- Crab-like ghost
+            love.graphics.setColor(1, 0.55 + pr(s + 4) * 0.3, 0.2, alpha)
+            love.graphics.circle("fill", gx, gy, 14)
+            love.graphics.setColor(0, 0, 0, alpha * 1.4)
+            love.graphics.circle("fill", gx - 5, gy - 4, 2.2)
+            love.graphics.circle("fill", gx + 5, gy - 4, 2.2)
+            love.graphics.setColor(1, 0.7, 0.3, alpha)
+            love.graphics.setLineWidth(2)
+            love.graphics.line(gx - 14, gy + 2, gx - 22, gy + 6)
+            love.graphics.line(gx + 14, gy + 2, gx + 22, gy + 6)
+        elseif kind == 2 then
+            -- Bullet streak
+            local dir = pr(s + 5) * math.pi * 2
+            local dx, dy = math.cos(dir), math.sin(dir)
+            love.graphics.setColor(1, 1, 0.5, alpha * 1.5)
+            love.graphics.setLineWidth(3)
+            love.graphics.line(gx - dx * 14, gy - dy * 14, gx + dx * 14, gy + dy * 14)
+            love.graphics.setColor(1, 0.9, 0.4, alpha)
+            love.graphics.circle("fill", gx, gy, 3)
+        elseif kind == 3 then
+            -- Red enemy orb
+            local r = 10 + pr(s + 6) * 10
+            love.graphics.setColor(0.9, 0.25, 0.35, alpha)
+            love.graphics.circle("fill", gx, gy, r)
+            love.graphics.setColor(1, 0.9, 0.7, alpha)
+            love.graphics.circle("fill", gx, gy, r * 0.4)
+        elseif kind == 4 then
+            -- Giant eye
+            local r = 14 + pr(s + 7) * 6
+            love.graphics.setColor(1, 0.92, 0.5, alpha * 0.9)
+            love.graphics.ellipse("fill", gx, gy, r * 1.4, r * 0.8)
+            love.graphics.setColor(0.1, 0.05, 0.2, alpha * 1.4)
+            love.graphics.circle("fill", gx, gy, r * 0.5)
+            love.graphics.setColor(0, 0, 0, alpha * 1.4)
+            love.graphics.circle("fill", gx, gy, r * 0.22)
+        else
+            -- Card rune
+            love.graphics.setColor(1, 0.85, 0.3, alpha)
+            love.graphics.setLineWidth(2)
+            love.graphics.rectangle("line", gx - 14, gy - 20, 28, 40)
+            love.graphics.line(gx - 8, gy, gx + 8, gy)
+            love.graphics.line(gx, gy - 8, gx, gy + 8)
+        end
+    end
+
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setLineWidth(1)
+end
+
+function Game:pickCard(index)
+    local c = self.cardChoices[index]
+    if not c then return end
+    c.apply(self.player)
+    table.insert(self.player.cardsTaken, c)
+    Audio:play("select")
+    P:text(self.player.x, self.player.y, c.name, Cards.rarityColor(c.rarity), 2)
+    self:beginWave(self.wave + 1)
+    self.state = "wave"
+end
+
+function Game:skipCard()
+    self.player:heal(3)
+    self:beginWave(self.wave + 1)
+    self.state = "wave"
+    Audio:play("select")
+end
+
+function Game:keypressed(key)
+    -- Global debug visualiser hotkey: hold Shift + Space and tap V to enter
+    -- a sprite/animation preview mode. Escape to leave.
+    if key == "v" and love.keyboard.isDown("space")
+        and (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift"))
+        and self.state ~= "debugvis" then
+        self._dvPrevState = self.state
+        self.state = "debugvis"
+        self.debugVisIndex = self.debugVisIndex or 1
+        self.debugVisBg = self.debugVisBg or 1
+        return
+    end
+    -- Shift+Space+S — sound debug menu
+    if key == "s" and love.keyboard.isDown("space")
+        and (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift"))
+        and self.state ~= "debugsound" then
+        self._dsPrevState = self.state
+        self.state = "debugsound"
+        self.debugSoundIndex = self.debugSoundIndex or 1
+        return
+    end
+    if self.state == "debugsound" then
+        require("src.debugsound").keypressed(self, key)
+        return
+    end
+    if self.state == "debugvis" then
+        if key == "escape" then
+            self.state = self._dvPrevState or "menu"
+            return
+        elseif key == "up" then
+            self.debugVisIndex = math.max(1, (self.debugVisIndex or 1) - 1)
+        elseif key == "down" then
+            local items = require("src.debugvis").items
+            self.debugVisIndex = math.min(#items, (self.debugVisIndex or 1) + 1)
+        elseif key == "left" then
+            self.debugVisBg = ((self.debugVisBg or 1) - 2) % 6 + 1
+        elseif key == "right" then
+            self.debugVisBg = (self.debugVisBg or 1) % 6 + 1
+        elseif key == "r" then
+            -- Reset animation timer for the selected item
+            self._dvStartT = love.timer.getTime()
+        elseif key == "i" then
+            self.debugVisHideUI = not self.debugVisHideUI
+        end
+        return
+    end
+    if self.state == "menu" then
+        if key == "return" or key == "kpenter" then
+            self:startRun()
+        elseif key == "c" then
+            self:openCustom()
+        elseif key == "o" then
+            self:openOptions()
+        elseif key == "k" then
+            self:openCustomise()
+        elseif key == "left" then
+            self:cycleDifficulty(-1)
+        elseif key == "right" then
+            self:cycleDifficulty(1)
+        end
+    elseif self.state == "custom" then
+        if key == "escape" then self.state = "menu" end
+        if key == "return" or key == "kpenter" then self:startCustom() end
+    elseif self.state == "options" then
+        if key == "escape" or key == "return" or key == "kpenter" then
+            Save.save(self.persist)
+            self.state = "menu"
+        end
+    elseif self.state == "slots" then
+        if key == "escape" or key == "return" or key == "kpenter" then
+            Save.save(self.persist)
+            self.state = "options"
+        end
+    elseif self.state == "resetdata" then
+        UI:resetDataKey(self, key)
+    elseif self.state == "playlist" then
+        if key == "escape" or key == "return" or key == "kpenter" then
+            Save.save(self.persist)
+            if Audio.music and Audio.music:isPlaying() then Audio.music:stop() end
+            self.state = "options"
+        end
+    elseif self.state == "aesthetics" then
+        if key == "escape" or key == "return" or key == "kpenter" then
+            Save.save(self.persist)
+            self.state = "options"
+        end
+    elseif self.state == "customise" then
+        if key == "escape" or key == "return" or key == "kpenter" then
+            Save.save(self.persist)
+            self.state = "menu"
+        end
+    elseif self.state == "gameover" or self.state == "victory" then
+        if (self.endTime or 0) < 1.0 then return end
+        if key == "return" or key == "kpenter" then
+            self:startRun(self.customConfig)
+        elseif key == "m" then
+            self.state = "menu"
+            Audio:stopMusic()
+        elseif key == "q" then
+            love.event.quit()
+        end
+    elseif self.state == "paused" then
+        if key == "return" or key == "kpenter" or key == "escape" then
+            self.state = self._resumeTo or "wave"
+            self._resumeTo = nil
+        elseif key == "m" then
+            self:cashOutInfinite()
+            self.state = "menu"
+            Audio:stopMusic()
+        elseif key == "n" then
+            -- Abandon without banking (infinite mode only uses this)
+            self.state = "menu"
+            Audio:stopMusic()
+        elseif key == "q" then
+            love.event.quit()
+        end
+    elseif self.state == "cards" then
+        if (self.cardArmTime or 0) > 0 then return end
+        local idx = tonumber(key)
+        if idx and self.cardChoices[idx] then
+            self:pickCard(idx)
+        elseif key == "f" then
+            self:skipCard()
+        end
+    elseif self.state == "wave" then
+        if key == "space" then
+            self.player:dash()
+        elseif key == "q" then
+            self.player:bomb(self)
+        end
+    end
+end
+
+-- Helper: if the click landed on a scroll thumb, begin dragging and return true.
+-- Uses RELATIVE drag: the thumb stays anchored under the cursor instead of
+-- snapping to the top of the track.
+function Game:tryScrollbarPress(x, y, bar, targetKey)
+    if not bar then return false end
+    local onThumb = x >= bar.trackX - 4 and x <= bar.trackX + bar.trackW + 4
+        and y >= bar.thumbY - 4 and y <= bar.thumbY + bar.thumbH + 4
+    local onTrack = x >= bar.trackX - 4 and x <= bar.trackX + bar.trackW + 4
+        and y >= bar.trackY and y <= bar.trackY + bar.trackH
+    if onThumb or onTrack then
+        -- Clicking on the empty track? Jump the thumb CENTER to the click first,
+        -- then the relative drag continues from there.
+        if not onThumb then
+            local frac = (y - bar.trackY - bar.thumbH / 2) / math.max(1, bar.trackH - bar.thumbH)
+            frac = math.max(0, math.min(1, frac))
+            self[targetKey .. "Target"] = frac * bar.maxScroll
+            self[targetKey] = self[targetKey .. "Target"]
+        end
+        self.scrollDrag = {
+            key         = targetKey .. "Target",
+            startMouseY = y,
+            startScroll = self[targetKey .. "Target"] or 0,
+            trackH      = bar.trackH,
+            thumbH      = bar.thumbH,
+            maxScroll   = bar.maxScroll,
+        }
+        return true
+    end
+    return false
+end
+
+function Game:mousereleased(x, y, button)
+    if button == 1 and self.scrollDrag then self.scrollDrag = nil end
+end
+
+function Game:mousepressed(x, y, button)
+    -- Scrollbar drag initiation (independent of state)
+    if button == 1 then
+        if self.state == "customise" and self:tryScrollbarPress(x, y, self.customiseScrollbar, "customiseScroll") then return end
+        if self.state == "custom"    and self:tryScrollbarPress(x, y, self.customScrollbar, "customScroll") then return end
+        if self.state == "playlist"  and self:tryScrollbarPress(x, y, self.playlistScrollbar, "playlistScroll") then return end
+        if self.state == "aesthetics" and self:tryScrollbarPress(x, y, self.aestheticsScrollbar, "aestheticsScroll") then return end
+    end
+
+    if self.state == "cards" and button == 1 then
+        -- Arm delay: ignore clicks for first 0.7s so mid-combat clicks don't leak
+        if (self.cardArmTime or 0) > 0 then return end
+        for i, c in ipairs(self.cardChoices) do
+            local b = c._bounds
+            if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
+                self:pickCard(i)
+                return
+            end
+        end
+        -- background clicks do nothing
+    elseif self.state == "menu" and button == 1 then
+        -- Difficulty arrows
+        local db = self.diffBounds
+        if db then
+            local l = db.left
+            if x >= l[1] and x <= l[1] + l[3] and y >= l[2] and y <= l[2] + l[4] then
+                self:cycleDifficulty(-1); return
+            end
+            local r = db.right
+            if x >= r[1] and x <= r[1] + r[3] and y >= r[2] and y <= r[2] + r[4] then
+                self:cycleDifficulty(1); return
+            end
+        end
+        -- Infinite mode toggle
+        local ib = self.infiniteBounds
+        if ib and x >= ib[1] and x <= ib[1] + ib[3] and y >= ib[2] and y <= ib[2] + ib[4] then
+            self.persist.infiniteMode = (self.persist.infiniteMode == 1) and 0 or 1
+            Save.save(self.persist)
+            Audio:play("select")
+            return
+        end
+        -- Check menu buttons
+        local mb = self.menuButtons or {}
+        for _, btn in ipairs(mb) do
+            if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
+                if     btn.action == "start"     then self:startRun()
+                elseif btn.action == "custom"    then self:openCustom()
+                elseif btn.action == "options"   then self:openOptions()
+                elseif btn.action == "customise" then self:openCustomise()
+                elseif btn.action == "quit"      then love.event.quit() end
+                return
+            end
+        end
+    elseif self.state == "options" and button == 1 then
+        UI:optionsClick(self, x, y)
+    elseif self.state == "slots" and button == 1 then
+        UI:slotsClick(self, x, y)
+    elseif self.state == "resetdata" and button == 1 then
+        UI:resetDataClick(self, x, y)
+    elseif self.state == "playlist" and button == 1 then
+        UI:playlistClick(self, x, y)
+    elseif self.state == "aesthetics" and button == 1 then
+        UI:aestheticsClick(self, x, y)
+    elseif self.state == "customise" and button == 1 then
+        UI:customiseClick(self, x, y)
+    elseif self.state == "paused" and button == 1 then
+        for _, btn in ipairs(self.pauseButtons or {}) do
+            if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
+                if btn.action == "resume" then
+                    self.state = self._resumeTo or "wave"
+                    self._resumeTo = nil
+                elseif btn.action == "menu" then
+                    self:cashOutInfinite()
+                    self.state = "menu"
+                    Audio:stopMusic()
+                elseif btn.action == "menu_discard" then
+                    -- Abandon the infinite run without recording progress
+                    self.state = "menu"
+                    Audio:stopMusic()
+                elseif btn.action == "quit" then
+                    love.event.quit()
+                end
+                return
+            end
+        end
+    elseif self.state == "custom" and button == 1 then
+        UI:customClick(self, x, y)
+    elseif (self.state == "gameover" or self.state == "victory") and button == 1 then
+        if (self.endTime or 0) < 1.0 then return end
+        for _, btn in ipairs(self.endButtons or {}) do
+            if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
+                if btn.action == "again" then
+                    self:startRun(self.customConfig)
+                elseif btn.action == "menu" then
+                    self.state = "menu"
+                    Audio:stopMusic()
+                elseif btn.action == "quit" then
+                    love.event.quit()
+                end
+                return
+            end
+        end
+    end
+end
+
+function Game:openOptions()
+    self.state = "options"
+end
+
+function Game:openSlots()
+    self.state = "slots"
+end
+
+-- Switch the active save slot. Saves current progress, activates new slot,
+-- reloads that slot's data, re-applies volumes/theme.
+function Game:switchSlot(slot)
+    -- Persist the current slot first so no progress is lost
+    Save.save(self.persist)
+    Save.setActiveSlot(slot)
+    self.persist = Save.load()
+    Audio.masterVol = self.persist.masterVol or 1.0
+    Audio.musicVol  = self.persist.musicVol or 1.0
+    Audio.sfxVol    = self.persist.sfxVol or 1.0
+    Audio:applyVolumes()
+    Audio:setTheme(self.persist.theme or Playlist.defaultId())
+    Audio:play("select")
+end
+
+function Game:openResetData()
+    self.resetTyped = ""
+    self.resetTypedAt = nil
+    self.state = "resetdata"
+end
+
+function Game:performResetData()
+    -- Wipe persistent save by replacing it with defaults
+    self.persist = {
+        globalRep = 50, winStreak = 0, bestStreak = 0,
+        totalWins = 0, totalRuns = 0, totalKills = 0, eldritchMax = 0,
+        masterVol = 1.0, musicVol = 1.0, sfxVol = 1.0,
+    }
+    Save.save(self.persist)
+    -- Apply reset volumes and theme
+    Audio.masterVol = 1.0; Audio.musicVol = 1.0; Audio.sfxVol = 1.0
+    Audio:applyVolumes()
+    Audio:setTheme(Playlist.defaultId())
+    self.resetTyped = ""
+    self.resetTypedAt = nil
+    self.state = "menu"
+end
+
+function Game:cycleDifficulty(dir)
+    local cur = self.persist.difficulty or Difficulty.defaultId()
+    self.persist.difficulty = Difficulty.cycle(cur, dir)
+    Save.save(self.persist)
+    Audio:play("select")
+end
+
+function Game:openCustomise()
+    self.state = "customise"
+    self.customiseSlot = "body"
+end
+
+Game.customDefaults = {
+    finalWave = 20,
+    startWave = 1,
+    startHp = 100,
+    startingReputation = 30,
+    startingCards = 0,
+    enemyHpMult = 1.0,
+    enemyDmgMult = 1.0,
+    spawnCountMult = 1.0,
+    playerDmgMult = 1.0,
+    playerFireRateMult = 1.0,
+    playerSpeedMult = 1.0,
+    playerBulletSpeedMult = 1.0,
+    scoreMult = 1.0,
+    dashCooldown = 2.5,
+    startEldritch = 0,
+    disableEldritch = 0,
+}
+
+function Game:openCustom()
+    self.customDraft = {}
+    for k, v in pairs(Game.customDefaults) do self.customDraft[k] = v end
+    self.customScroll = 0
+    self.state = "custom"
+end
+
+function Game:resetCustomAll()
+    for k, v in pairs(Game.customDefaults) do self.customDraft[k] = v end
+end
+
+function Game:resetCustomKey(k)
+    self.customDraft[k] = Game.customDefaults[k]
+end
+
+function Game:startCustom()
+    local d = self.customDraft
+    self:startRun({
+        finalWave = d.finalWave,
+        startWave = d.startWave,
+        startHp = d.startHp,
+        startingReputation = d.startingReputation,
+        startingCards = d.startingCards,
+        enemyHpMult = d.enemyHpMult,
+        enemyDmgMult = d.enemyDmgMult,
+        spawnCountMult = d.spawnCountMult,
+        playerDmgMult = d.playerDmgMult,
+        playerFireRateMult = d.playerFireRateMult,
+        playerSpeedMult = d.playerSpeedMult,
+        playerBulletSpeedMult = d.playerBulletSpeedMult,
+        scoreMult = d.scoreMult,
+        dashCooldown = d.dashCooldown,
+        startEldritch = d.startEldritch,
+        disableEldritch = (d.disableEldritch == 1),
+    })
+end
+
+return Game
