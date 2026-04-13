@@ -2925,52 +2925,16 @@ local function drawPreviewCrab(x, y, scale, cosmetics, t)
         love.graphics.circle("fill", -5, -5, 3)
         love.graphics.circle("fill",  5, -5, 3)
     elseif eye == "churgly_eyes" then
-        local chomp = 0.4 + 0.5 * math.abs(math.sin(t * 3))
-        for _, px in ipairs({-5, 5}) do
-            love.graphics.setColor(0.45, 0.12, 0.55, 0.8)
-            love.graphics.circle("fill", px, -6, 3.5)
-            love.graphics.setColor(1, 0.85, 0.2, 1)
-            love.graphics.circle("fill", px, -6, 2.4)
+        -- Churgly'nth face: black upside-down triangle (apex grazes head
+        -- outline at y=18, height = 2.2/3 of the 36-px head). Eyes vertically
+        -- centered inside the mouth (y=5), pulled in toward the sides (x=±11).
+        love.graphics.setColor(0, 0, 0)
+        love.graphics.polygon("fill", -11, -7, 11, -7, 0, 17)
+        for _, px in ipairs({-11, 11}) do
+            love.graphics.setColor(1, 0.8, 0.15)
+            love.graphics.circle("fill", px, 5, 3)
             love.graphics.setColor(0, 0, 0)
-            love.graphics.ellipse("fill", px, -6, 0.6, 2)
-            love.graphics.setColor(1, 1, 0.7, 0.8)
-            love.graphics.circle("fill", px - 0.7, -6.8, 0.6)
-        end
-        love.graphics.setColor(0.3, 0.08, 0.4)
-        love.graphics.polygon("fill",
-            -9, 2,
-            -5, -1,
-             5, -1,
-             9, 2,
-             6, 4 * chomp + 2,
-            -6, 4 * chomp + 2)
-        love.graphics.setColor(0.04, 0, 0.08)
-        love.graphics.polygon("fill",
-            -7, 1,
-             7, 1,
-             4, 3 * chomp + 1,
-            -4, 3 * chomp + 1)
-        love.graphics.setColor(0.95, 0.92, 0.85)
-        for k = -3, 3 do
-            local tx = k * 2
-            love.graphics.polygon("fill", tx, 1, tx - 0.8, 2.2, tx + 0.8, 2.2)
-            love.graphics.polygon("fill", tx, 4 * chomp + 1.5, tx - 0.8, 3 * chomp + 0.7, tx + 0.8, 3 * chomp + 0.7)
-        end
-        for sx = -1, 1, 2 do
-            local bx = sx * 8
-            love.graphics.setColor(0.04, 0, 0.08)
-            love.graphics.polygon("fill",
-                bx - sx * 1.2, 2,
-                bx + sx * 1.8, 2 + 0.4 * chomp,
-                bx + sx * 1.8, 4 - 0.4 * chomp,
-                bx - sx * 1.2, 4)
-            love.graphics.setColor(0.95, 0.92, 0.85)
-            love.graphics.polygon("fill", bx, 2.2, bx - sx * 0.4, 3, bx + sx * 0.4, 3)
-        end
-        if math.sin(t * 5) > 0.4 then
-            love.graphics.setColor(0.7, 0.1, 0.2)
-            love.graphics.line(0, 4 * chomp + 2, -2, 4 * chomp + 4)
-            love.graphics.line(0, 4 * chomp + 2,  2, 4 * chomp + 4)
+            love.graphics.ellipse("fill", px, 5, 0.6, 2.2)
         end
     elseif eye == "slugcrab" then
         -- Match in-game: invert to white on dark bodies so the eyes stay visible.

@@ -2054,65 +2054,26 @@ function Player:_drawEyes(style, deep)
         love.graphics.circle("fill", -5, -5, 3)
         love.graphics.circle("fill",  5, -5, 3)
     elseif style == "churgly_eyes" then
-        -- Churgly'nth Eyes: glowing yellow slit-pupil eyes plus a fractal reptilian
-        -- mouth chomping beneath them. Scales with body luminance so the maw reads
-        -- on any skin.
-        local t = love.timer.getTime()
-        local chomp = 0.4 + 0.5 * math.abs(math.sin(t * 3))
-        -- Twin slit eyes
-        for _, px in ipairs({-5, 5}) do
-            love.graphics.setColor(0.45, 0.12, 0.55, 0.8)
-            love.graphics.circle("fill", px, -6, 3.5)
-            love.graphics.setColor(1, 0.85, 0.2, 1)
-            love.graphics.circle("fill", px, -6, 2.4)
+        -- Churgly'nth face — mirrors the in-game Churgly head:
+        --   * Big black upside-down triangle maw whose apex barely touches the
+        --     bottom of the head outline (apex y = +18, head radius). Mouth
+        --     height = 2.2/3 of the 36-px head ≈ 26 px so the top edge sits at
+        --     y = 18 - 26 = -8.
+        --   * Two yellow reptilian slit-pupil eyes pinned in close to the side
+        --     of the head, vertically centered inside the mouth (eye y = 5,
+        --     halfway between the mouth top -8 and the apex 18).
+        love.graphics.setColor(0, 0, 0)
+        love.graphics.polygon("fill",
+            -11, -7,    -- mouth top-left (slimmer but not too narrow)
+             11, -7,    -- mouth top-right
+              0, 17)    -- mouth apex (slightly shorter, grazes outline)
+        for _, px in ipairs({-11, 11}) do
+            -- Yellow iris
+            love.graphics.setColor(1, 0.8, 0.15)
+            love.graphics.circle("fill", px, 5, 3)
+            -- Vertical slit pupil
             love.graphics.setColor(0, 0, 0)
-            love.graphics.ellipse("fill", px, -6, 0.6, 2)
-            love.graphics.setColor(1, 1, 0.7, 0.8)
-            love.graphics.circle("fill", px - 0.7, -6.8, 0.6)
-        end
-        -- Reptilian fractal mouth UNDERNEATH the eyes
-        -- Outer jaw (purple)
-        love.graphics.setColor(0.3, 0.08, 0.4)
-        love.graphics.polygon("fill",
-            -9, 2,
-            -5, -1,
-             5, -1,
-             9, 2,
-             6, 4 * chomp + 2,
-            -6, 4 * chomp + 2)
-        -- Inner maw (black)
-        love.graphics.setColor(0.04, 0, 0.08)
-        love.graphics.polygon("fill",
-            -7, 1,
-             7, 1,
-             4, 3 * chomp + 1,
-            -4, 3 * chomp + 1)
-        -- Teeth (top + bottom rows, staggered)
-        love.graphics.setColor(0.95, 0.92, 0.85)
-        for k = -3, 3 do
-            local tx = k * 2
-            love.graphics.polygon("fill", tx, 1, tx - 0.8, 2.2, tx + 0.8, 2.2)
-            love.graphics.polygon("fill", tx, 4 * chomp + 1.5, tx - 0.8, 3 * chomp + 0.7, tx + 0.8, 3 * chomp + 0.7)
-        end
-        -- Tiny fractal sub-mouths on the jaw corners (self-similar)
-        for sx = -1, 1, 2 do
-            local bx = sx * 8
-            love.graphics.setColor(0.04, 0, 0.08)
-            love.graphics.polygon("fill",
-                bx - sx * 1.2, 2,
-                bx + sx * 1.8, 2 + 0.4 * chomp,
-                bx + sx * 1.8, 4 - 0.4 * chomp,
-                bx - sx * 1.2, 4)
-            love.graphics.setColor(0.95, 0.92, 0.85)
-            love.graphics.polygon("fill", bx, 2.2, bx - sx * 0.4, 3, bx + sx * 0.4, 3)
-        end
-        -- Forked tongue flicker
-        if math.sin(t * 5) > 0.4 then
-            love.graphics.setColor(0.7, 0.1, 0.2)
-            love.graphics.setLineWidth(1.1)
-            love.graphics.line(0, 4 * chomp + 2, -2, 4 * chomp + 4)
-            love.graphics.line(0, 4 * chomp + 2,  2, 4 * chomp + 4)
-            love.graphics.setLineWidth(1)
+            love.graphics.ellipse("fill", px, 5, 0.6, 2.2)
         end
     elseif style == "void_gaze" then
         -- Void Gaze: two main cosmic voids + extra eldritch eyes studded across the face,

@@ -108,9 +108,9 @@ C.items = {
         {id="bloodmoon",    name="Bloodmoon",         color={0.55, 0.05, 0.10}, secondary={1.00, 0.30, 0.20}, pattern="stars",
             hint="Win 2 runs on Apocalypse",         unlock=apocalypseWins(2)},
 
-        -- Churgly'nth body — endgame eldritch unlock. Black with purple accents;
-        -- alligator-like reptilian mouths peek from the sides of the shell, leaving the top clear for eyes.
-        {id="churglynth",   name="Churgly'nth",        color={0.06, 0.04, 0.10}, secondary={0.55, 0.15, 0.90}, pattern="churgly",
+        -- Churgly'nth body — endgame eldritch unlock. Slightly darker purple
+        -- (no black) so it pairs cleanly with the Churgly'nth Eyes face.
+        {id="churglynth",   name="Churgly'nth",        color={0.22, 0.08, 0.32}, secondary={0.55, 0.15, 0.90}, pattern="churgly",
             hint="WIN a run at eldritch >= 24",      unlock=winEld(24)},
 
         -- Secret
