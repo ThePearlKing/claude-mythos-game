@@ -76,11 +76,14 @@ function Voidsea.update(dt, game)
     local p = game.player
     v.phaseTimer = v.phaseTimer + dt
 
-    -- Crab stays locked to screen center, swimming in place.
+    -- Crab stays locked to screen center. Swimming leg-kicks only animate
+    -- while the player is actively pushing downward (holding S).
     p.x = 640
     p.y = 360
     p.swimming = true
-    p.legPhase = (p.legPhase or 0) + dt * 18 -- faster leg kicks
+    if love.keyboard.isDown("s") then
+        p.legPhase = (p.legPhase or 0) + dt * 18
+    end
 
     -- Intentions: W = rise (slow retreat), S = descend (deepen)
     local dy = 0

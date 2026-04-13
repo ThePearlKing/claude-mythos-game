@@ -56,12 +56,12 @@ Cards.pool = {
         desc="Bullets freeze enemies 1s",
         apply=function(p) p.stats.freeze = math.max(p.stats.freeze, 1) end},
     {id="burn", name="Incendiary", rarity="uncommon", color={1,0.5,0.2},
-        desc="Burns enemies (DoT)",
-        apply=function(p) p.stats.burn = p.stats.burn + 6 end},
-    {id="lifesteal", name="Vampiric Rounds", rarity="uncommon", color={1,0.3,0.4},
+        desc="Burns enemies. +14 burn DoT/sec.",
+        apply=function(p) p.stats.burn = p.stats.burn + 14 end},
+    {id="lifesteal", name="Vampiric Rounds", rarity="uncommon", color={1,0.3,0.4}, healthCard=true,
         desc="Heal 8% of damage dealt",
         apply=function(p) p.stats.lifesteal = p.stats.lifesteal + 0.08 end},
-    {id="killheal", name="Bloodlust", rarity="uncommon", color={0.9,0.2,0.3},
+    {id="killheal", name="Bloodlust", rarity="uncommon", color={0.9,0.2,0.3}, healthCard=true,
         desc="Heal 4 HP on kill",
         apply=function(p) p.stats.killHeal = p.stats.killHeal + 4 end},
     {id="nimble", name="Nimble Crab", rarity="uncommon", color={0.6,1,0.9},
@@ -79,7 +79,7 @@ Cards.pool = {
     {id="pickupr", name="Magnet", rarity="uncommon", color={0.8,0.4,0.8},
         desc="+150% pickup range",
         apply=function(p) p.stats.magnet = p.stats.magnet * 2.5 end},
-    {id="heal", name="First Aid", rarity="uncommon", color={0.4,1,0.5},
+    {id="heal", name="First Aid", rarity="uncommon", color={0.4,1,0.5}, healthCard=true,
         desc="Full heal + 10 max HP",
         apply=function(p) addMax(p, 10); p.hp = p.maxHp end},
 
@@ -96,7 +96,7 @@ Cards.pool = {
     {id="orb", name="Orbital Guard", rarity="rare", color={1,0.9,0.4},
         desc="+1 orbiting projectile",
         apply=function(p) p.stats.orbs = p.stats.orbs + 1 end},
-    {id="shield", name="Energy Shield", rarity="rare", color={0.4,0.7,1},
+    {id="shield", name="Energy Shield", rarity="rare", color={0.4,0.7,1}, healthCard=true,
         desc="+40 regenerating shield",
         apply=function(p) p.stats.shieldMax = p.stats.shieldMax + 40; p.stats.shieldRegen = p.stats.shieldRegen + 4; p.stats.shield = p.stats.shieldMax end},
     {id="dash", name="Crab Dash", rarity="rare", color={0.9,0.7,0.3},
@@ -180,10 +180,10 @@ Cards.pool = {
     {id="mag", name="Score Multiplier", rarity="uncommon", color={1,0.9,0.4},
         desc="+35% score & reputation",
         apply=function(p) p.stats.scoreMult = p.stats.scoreMult * 1.35; p.reputation = p.reputation + 5 end},
-    {id="repair", name="Repair Kit", rarity="common", color={0.5,1,0.5},
+    {id="repair", name="Repair Kit", rarity="common", color={0.5,1,0.5}, healthCard=true,
         desc="Heal 50 HP",
         apply=function(p) p:heal(50) end},
-    {id="vitality", name="Vitality", rarity="common", color={0.5,0.9,0.4},
+    {id="vitality", name="Vitality", rarity="common", color={0.5,0.9,0.4}, healthCard=true,
         desc="+20 max HP",
         apply=function(p) addMax(p, 20) end},
     {id="quick", name="Quick Hands", rarity="common", color={0.9,0.8,0.6},
@@ -302,8 +302,8 @@ Cards.pool = {
         desc="+2 eldritch. Enemies freeze for 2s on first hit.",
         apply=function(p) p.stats.freeze = math.max(p.stats.freeze, 2); require("src.eldritch").gainLevel(p, 2) end},
     {id="eld_saltbrine", name="Saltbrine Curse", rarity="eldritch", color={0.2,0.5,0.45}, eldritch=true, requiresEldritch=1,
-        desc="+1 eldritch. Burn DoT +10. Crit +10%.",
-        apply=function(p) p.stats.burn = p.stats.burn + 10; p.stats.crit = p.stats.crit + 0.1; require("src.eldritch").gainLevel(p, 1) end},
+        desc="+1 eldritch. +22 burn DoT/sec. Crit +10%.",
+        apply=function(p) p.stats.burn = p.stats.burn + 22; p.stats.crit = p.stats.crit + 0.1; require("src.eldritch").gainLevel(p, 1) end},
     {id="eld_thousand", name="A Thousand Pincers", rarity="eldritch", color={0.65,0.1,0.4}, eldritch=true, requiresEldritch=3,
         desc="+3 eldritch. +3 bullets. 3x spread.",
         apply=function(p) p.stats.bullets = p.stats.bullets + 3; p.stats.spread = p.stats.spread * 3 + 0.15; require("src.eldritch").gainLevel(p, 3) end},
@@ -477,7 +477,7 @@ Cards.pool = {
         apply=function(p) p.stats.pierce = p.stats.pierce + 20; p.laserFullPierce = true end},
     {id="laser_solar", name="Solar Focus", rarity="rare", color={1,0.8,0.2}, requiresWeapon="laser",
         desc="LASER: burns at 3x strength for 4s.",
-        apply=function(p) p.stats.burn = p.stats.burn + 15; p.laserBurnMult = 3 end},
+        apply=function(p) p.stats.burn = p.stats.burn + 30; p.laserBurnMult = 3 end},
     {id="laser_cryo", name="Cryo Beam", rarity="rare", color={0.4,0.9,1}, requiresWeapon="laser", oncePerRun=true,
         desc="LASER: freezes enemies for 1s on contact.",
         apply=function(p) p.stats.freeze = math.max(p.stats.freeze, 1); p.laserFreezeMult = 2 end},
@@ -593,6 +593,9 @@ function Cards.pick(n, wave, player, disableEldritch, finalWave)
                 if c.rarity == "eldritch"  then w = w * eldritchMult end
                 -- commonEldritch flag: roughly 2.5x more likely than its eldritch peers.
                 if c.commonEldritch and not disableEldritch then w = w * 2.5 end
+                -- healthCard flag: moderately bumped so sustain options show
+                -- up reliably (winning runs usually need ~2 health cards).
+                if c.healthCard then w = w * 2.2 end
                 -- Non-eldritch-rarity cards still tagged eldritch (e.g. Forbidden Knowledge, Glimpse Beyond)
                 -- get an eldritch bump scaling with current level
                 if c.eldritch and c.rarity ~= "eldritch" and not disableEldritch then

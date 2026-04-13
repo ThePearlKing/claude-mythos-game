@@ -13,9 +13,9 @@ Difficulty.levels = {
     {id = "hard",       name = "HARD",       color = {1.0, 0.65, 0.2},
         enemyHp = 1.25, enemyDmg = 1.30, spawnCount = 1.15, playerHpBonus = 0,   repMult = 1.35, desc = "Sharp fangs. Reputation +35%."},
     {id = "nightmare",  name = "NIGHTMARE",  color = {1.0, 0.25, 0.25},
-        enemyHp = 1.55, enemyDmg = 1.65, spawnCount = 1.30, playerHpBonus = 0,   repMult = 1.7, desc = "You will bleed. Reputation +70%."},
+        enemyHp = 1.55, enemyDmg = 1.45, spawnCount = 1.30, playerHpBonus = 0,   repMult = 1.7, desc = "You will bleed. Reputation +70%."},
     {id = "apocalypse", name = "APOCALYPSE", color = {0.8, 0.0, 0.9},
-        enemyHp = 1.80, enemyDmg = 1.85, spawnCount = 1.40, playerHpBonus = 0,   repMult = 2.1, desc = "The tech hive descends. Reputation x2.1."},
+        enemyHp = 1.80, enemyDmg = 1.65, spawnCount = 1.40, playerHpBonus = 0,   repMult = 2.1, desc = "The tech hive descends. Reputation x2.1."},
 }
 
 function Difficulty.defaultId() return "normal" end

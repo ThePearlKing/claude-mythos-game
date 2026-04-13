@@ -1527,10 +1527,12 @@ function Player:_drawGun(style)
         love.graphics.circle("line", baseX + 36, 0, 4.5)
         love.graphics.setColor(0.08, 0.08, 0.1)
         love.graphics.circle("fill", baseX + 36, 0, 3.5)
-        -- Muzzle flash when "firing" (flicker)
-        if math.sin(t * 40) > 0.3 then
+        -- Muzzle flash — only when the player is actually firing. Faster
+        -- flicker than before (was t*40 / t*60 → now t*90 / t*140).
+        local firing = love.mouse.isDown(1) and not self.disabled and not self.laserActive
+        if firing and math.sin(t * 90) > 0.2 then
             love.graphics.setColor(1, 0.8, 0.3, 0.9)
-            love.graphics.circle("fill", baseX + 38, 0, 3 + math.sin(t * 60) * 1)
+            love.graphics.circle("fill", baseX + 38, 0, 3 + math.sin(t * 140) * 1)
             love.graphics.setColor(1, 1, 0.8, 1)
             love.graphics.circle("fill", baseX + 38, 0, 1.5)
         end
@@ -1576,39 +1578,118 @@ function Player:_drawGun(style)
             love.graphics.line(sx, sy - 1.5, sx, sy + 1.5)
         end
     elseif style == "scythe" then
-        -- Held sideways: wooden shaft + curved black blade with green edge glow
+        -- Proper reaper's scythe: long wooden snath with grip wraps, metal
+        -- attachment collar, and a BIG curved crescent blade (crescent shape
+        -- is split into an outer-body polygon + an inner-hook polygon since
+        -- LÖVE polygons must be convex). Glowing green cutting edge on the
+        -- inside of the crescent, with drip wisps off the blade point.
         local t = love.timer.getTime()
-        -- Shaft (wood grain)
+        -- Long wooden snath
         love.graphics.setColor(0.35, 0.22, 0.1)
-        love.graphics.setLineWidth(3)
-        love.graphics.line(baseX - 4, 0, baseX + 40, 0)
-        love.graphics.setColor(0.5, 0.32, 0.15)
+        love.graphics.setLineWidth(4)
+        love.graphics.line(baseX - 4, 0, baseX + 50, 0)
+        love.graphics.setColor(0.55, 0.36, 0.16)
+        love.graphics.setLineWidth(1.5)
+        love.graphics.line(baseX - 4, -1.2, baseX + 50, -1.2)
         love.graphics.setLineWidth(1)
-        love.graphics.line(baseX - 4, -1, baseX + 40, -1)
-        -- Bindings
-        love.graphics.setColor(0.12, 0.08, 0.05)
-        for _, x in ipairs({baseX + 4, baseX + 20, baseX + 36}) do
-            love.graphics.rectangle("fill", x, -2, 2, 4)
+        -- Grip wraps (leather bindings with gold stitching)
+        for _, wx in ipairs({baseX + 4, baseX + 22, baseX + 40}) do
+            love.graphics.setColor(0.1, 0.06, 0.04)
+            love.graphics.rectangle("fill", wx, -2.5, 3, 5)
+            love.graphics.setColor(0.85, 0.65, 0.2)
+            love.graphics.line(wx + 1, -2.5, wx + 1, 2.5)
         end
-        -- Curved blade (black, crescent-shaped)
-        love.graphics.setColor(0.08, 0.06, 0.12)
+        -- Metal collar where the blade attaches
+        love.graphics.setColor(0.3, 0.3, 0.36)
+        love.graphics.rectangle("fill", baseX + 46, -3.5, 7, 7)
+        love.graphics.setColor(0.6, 0.6, 0.7)
+        love.graphics.rectangle("line", baseX + 46, -3.5, 7, 7)
+        love.graphics.setColor(0.1, 0.08, 0.12)
+        love.graphics.line(baseX + 49, -3.5, baseX + 49, 3.5)
+
+        -- BLADE: crescent split into two convex halves.
+        -- Half 1 — outer body (rising from the collar, arcing to the tip)
+        love.graphics.setColor(0.14, 0.1, 0.18)
         love.graphics.polygon("fill",
-            baseX + 36, 0,
-            baseX + 42, -8,
-            baseX + 52, -16,
-            baseX + 58, -14,
-            baseX + 52, -6,
-            baseX + 44, 2)
-        -- Inner glow edge (green)
-        love.graphics.setColor(0.3, 1, 0.5, 0.9 + math.sin(t * 4) * 0.1)
-        love.graphics.setLineWidth(2)
-        love.graphics.line(baseX + 38, 0, baseX + 44, -8, baseX + 52, -14, baseX + 56, -13)
+            baseX + 53, -2,
+            baseX + 56, -12,
+            baseX + 64, -22,
+            baseX + 78, -28,
+            baseX + 94, -26,
+            baseX + 100, -18,
+            baseX + 96, -10,
+            baseX + 82, -12,
+            baseX + 66, -10,
+            baseX + 54, -4)
+        -- Half 2 — inner hook (the curl on the underside, convex)
+        love.graphics.polygon("fill",
+            baseX + 54, -4,
+            baseX + 66, -10,
+            baseX + 82, -12,
+            baseX + 96, -10,
+            baseX + 96, -6,
+            baseX + 82, -6,
+            baseX + 66, -4,
+            baseX + 54, 0)
+        -- Blade outline (dark violet)
+        love.graphics.setColor(0.04, 0.02, 0.08)
+        love.graphics.setLineWidth(1.5)
+        love.graphics.line(
+            baseX + 53, -2,
+            baseX + 56, -12,
+            baseX + 64, -22,
+            baseX + 78, -28,
+            baseX + 94, -26,
+            baseX + 100, -18,
+            baseX + 96, -10,
+            baseX + 96, -6)
+        love.graphics.line(
+            baseX + 96, -6,
+            baseX + 82, -6,
+            baseX + 66, -4,
+            baseX + 54, 0)
         love.graphics.setLineWidth(1)
-        -- Drip wisps trailing off the blade tip
+
+        -- Steel highlight along the blade spine
+        love.graphics.setColor(0.42, 0.38, 0.48)
+        love.graphics.setLineWidth(1.5)
+        love.graphics.line(
+            baseX + 58, -14,
+            baseX + 68, -22,
+            baseX + 82, -26,
+            baseX + 94, -24,
+            baseX + 98, -18)
+        love.graphics.setLineWidth(1)
+
+        -- Glowing green CUTTING EDGE along the inner curve
+        local glow = 0.8 + math.sin(t * 5) * 0.2
+        love.graphics.setColor(0.3, 1, 0.5, glow)
+        love.graphics.setLineWidth(2.2)
+        love.graphics.line(
+            baseX + 54, -4,
+            baseX + 66, -8,
+            baseX + 80, -10,
+            baseX + 94, -8,
+            baseX + 96, -6)
+        love.graphics.setColor(1, 1, 0.9, glow * 0.8)
+        love.graphics.setLineWidth(1)
+        love.graphics.line(
+            baseX + 54, -4,
+            baseX + 66, -8,
+            baseX + 80, -10,
+            baseX + 94, -8)
+
+        -- Small rune etched into the blade body
+        love.graphics.setColor(0.3, 1, 0.5, 0.5 + math.sin(t * 3) * 0.3)
+        love.graphics.circle("line", baseX + 78, -18, 2.2)
+        love.graphics.line(baseX + 76, -18, baseX + 80, -18)
+        love.graphics.line(baseX + 78, -20, baseX + 78, -16)
+
+        -- Drip wisps trailing off the blade point
         for i = 0, 4 do
             local f = ((t * 0.8 + i * 0.2) % 1)
-            love.graphics.setColor(0.3, 1, 0.4, (1 - f) * 0.6)
-            love.graphics.circle("fill", baseX + 58, -14 + f * 18, 1.5 - f * 1)
+            love.graphics.setColor(0.3, 1, 0.4, (1 - f) * 0.7)
+            love.graphics.circle("fill", baseX + 98 + f * 3, -18 + f * 18, 2 - f * 1.3)
         end
     else
         -- fallback (same as pistol)

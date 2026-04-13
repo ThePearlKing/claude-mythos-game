@@ -301,7 +301,9 @@ add("King Fractal (growing)", function(t)
 end)
 
 add("Tesseract", function(t)
-    Eldritch._debugDrawTesseract(640, 360, 120, t * 0.6, 0.9)
+    -- Bigger size + non-zero starting angle so the 4D-to-2D projection
+    -- spreads vertices enough to be clearly visible.
+    Eldritch._debugDrawTesseract(640, 360, 260, t * 0.6 + 0.9, 1.0)
 end)
 add("Eldritch Ghost Crab", function(t)
     Eldritch._debugDrawEldritchCrab(640, 360, 80, 0.95, t * 2)

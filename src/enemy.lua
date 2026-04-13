@@ -155,8 +155,17 @@ function Enemy:update(dt, game)
     if self.burnTime > 0 then
         self.burnTime = self.burnTime - dt
         self.hp = self.hp - self.burnDmg * dt
-        if math.random() < 0.2 then
-            P:spawn(self.x, self.y, 1, {1, 0.5, 0.1}, 40, 0.3, 2)
+        -- Much thicker fire plume — noticeable spray of flame particles
+        if math.random() < 0.85 then
+            local ox = math.random(-self.r, self.r) * 0.7
+            local oy = math.random(-self.r, self.r) * 0.7
+            local col = (math.random() < 0.5) and {1, 0.9, 0.3} or {1, 0.4, 0.1}
+            P:spawn(self.x + ox, self.y + oy, 2, col, 60, 0.45, 3)
+        end
+        if math.random() < 0.25 then
+            -- Rising ember
+            P:spawn(self.x + math.random(-self.r, self.r), self.y - self.r,
+                1, {1, 0.6, 0.15}, 80, 0.7, 3)
         end
         if self.hp <= 0 and not self.dead then
             self.dead = true
@@ -632,8 +641,24 @@ function Enemy:draw()
         love.graphics.circle("fill", 0, 0, r + 4)
     end
     if self.burnTime > 0 then
-        love.graphics.setColor(1, 0.4, 0.1, 0.3 + math.sin(self.anim * 20) * 0.15)
-        love.graphics.circle("line", 0, 0, r + 5)
+        -- Thick pulsing fire aura: outer red glow, inner orange flame tint,
+        -- flickering ring around the silhouette.
+        local pulse = 0.5 + math.sin(self.anim * 22) * 0.5
+        love.graphics.setColor(1, 0.3, 0.05, 0.25 + pulse * 0.2)
+        love.graphics.circle("fill", 0, 0, r + 8 + pulse * 2)
+        love.graphics.setColor(1, 0.55, 0.15, 0.6)
+        love.graphics.setLineWidth(2.5)
+        love.graphics.circle("line", 0, 0, r + 4 + pulse * 2)
+        love.graphics.setColor(1, 0.85, 0.35, 0.55)
+        love.graphics.setLineWidth(1)
+        love.graphics.circle("line", 0, 0, r + 1)
+        -- Flame-licks around the perimeter
+        for i = 0, 5 do
+            local a = (i / 6) * math.pi * 2 + self.anim * 3
+            local flick = r + 6 + math.abs(math.sin(self.anim * 10 + i)) * 6
+            love.graphics.setColor(1, 0.7, 0.2, 0.7)
+            love.graphics.circle("fill", math.cos(a) * flick, math.sin(a) * flick, 1.8)
+        end
     end
     love.graphics.pop()
 

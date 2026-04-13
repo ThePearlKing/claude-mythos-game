@@ -1681,8 +1681,8 @@ local function drawGunAt(x, y, scale, gun, t)
         end
         love.graphics.setColor(0.5, 0.5, 0.55); love.graphics.circle("line", baseX + 36, 0, 4.5)
         love.graphics.setColor(0.08, 0.08, 0.1); love.graphics.circle("fill", baseX + 36, 0, 3.5)
-        if math.sin(t * 40) > 0.3 then
-            love.graphics.setColor(1, 0.8, 0.3, 0.9); love.graphics.circle("fill", baseX + 38, 0, 3 + math.sin(t * 60) * 1)
+        if math.sin(t * 90) > 0.2 then
+            love.graphics.setColor(1, 0.8, 0.3, 0.9); love.graphics.circle("fill", baseX + 38, 0, 3 + math.sin(t * 140) * 1)
             love.graphics.setColor(1, 1, 0.8); love.graphics.circle("fill", baseX + 38, 0, 1.5)
         end
     elseif gun == "icegun" then
@@ -2745,8 +2745,8 @@ local function drawPreviewCrab(x, y, scale, cosmetics, t)
         end
         love.graphics.setColor(0.5, 0.5, 0.55); love.graphics.circle("line", baseX + 36, 0, 4.5)
         love.graphics.setColor(0.08, 0.08, 0.1); love.graphics.circle("fill", baseX + 36, 0, 3.5)
-        if math.sin(t * 40) > 0.3 then
-            love.graphics.setColor(1, 0.8, 0.3, 0.9); love.graphics.circle("fill", baseX + 38, 0, 3 + math.sin(t * 60) * 1)
+        if math.sin(t * 90) > 0.2 then
+            love.graphics.setColor(1, 0.8, 0.3, 0.9); love.graphics.circle("fill", baseX + 38, 0, 3 + math.sin(t * 140) * 1)
             love.graphics.setColor(1, 1, 0.8); love.graphics.circle("fill", baseX + 38, 0, 1.5)
         end
     elseif gun == "icegun" then

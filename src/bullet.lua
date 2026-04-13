@@ -90,7 +90,7 @@ function Bullet:onHit(target, game)
     target:damage(dmg, self.owner, game, isCrit)
 
     if self.freeze > 0 then target.freezeTime = math.max(target.freezeTime or 0, self.freeze) end
-    if self.burn > 0 then target.burnTime = math.max(target.burnTime or 0, 3); target.burnDmg = self.burn end
+    if self.burn > 0 then target.burnTime = math.max(target.burnTime or 0, 4.5); target.burnDmg = self.burn end
 
     if self.lifesteal > 0 and self.owner then
         self.owner:heal(dmg * self.lifesteal)
