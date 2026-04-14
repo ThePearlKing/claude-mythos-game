@@ -319,6 +319,91 @@ add("Eldritch whisper glimpse", function(t)
     love.graphics.printf("YOU WERE A CLAW I DREAMT", 0, 460, 1280, "center")
 end)
 
+-- ---- Reality Shard (collectible crystal)
+add("Reality Shard", function(t)
+    local pulse = 0.75 + math.sin(t * 4) * 0.25
+    love.graphics.push()
+    love.graphics.translate(640, 360)
+    love.graphics.rotate(t * 0.6)
+    for rr = 34, 14, -5 do
+        love.graphics.setColor(0.6, 0.2, 1, 0.14 * pulse * (1 - rr / 34))
+        love.graphics.circle("fill", 0, 0, rr * pulse)
+    end
+    love.graphics.setColor(0.85, 0.5, 1, 0.95)
+    love.graphics.polygon("fill", 0, -16, 9, 0, 0, 16, -9, 0)
+    love.graphics.setColor(1, 0.85, 1, 1)
+    love.graphics.polygon("fill", 0, -9, 4, 0, 0, 9, -4, 0)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.setLineWidth(2)
+    love.graphics.polygon("line", 0, -16, 9, 0, 0, 16, -9, 0)
+    love.graphics.setLineWidth(1)
+    love.graphics.pop()
+end)
+
+-- ---- Ugnrak Beam (crimson annihilation beam)
+add("Ugnrak Beam", function(t)
+    local fake = {x1 = 320, y1 = 360, x2 = 1100, y2 = 360, life = 0.9, max = 0.9}
+    local fade = 0.8
+    local pulse = 0.8 + math.sin(t * 40) * 0.2
+    love.graphics.setColor(1, 0.1, 0.15, 0.5 * fade * pulse)
+    love.graphics.setLineWidth(120 * pulse)
+    love.graphics.line(fake.x1, fake.y1, fake.x2, fake.y2)
+    love.graphics.setColor(1, 0.25, 0.2, 0.8 * fade)
+    love.graphics.setLineWidth(70 * pulse)
+    love.graphics.line(fake.x1, fake.y1, fake.x2, fake.y2)
+    love.graphics.setColor(1, 0.5, 0.25, 0.95 * fade)
+    love.graphics.setLineWidth(34)
+    love.graphics.line(fake.x1, fake.y1, fake.x2, fake.y2)
+    love.graphics.setColor(1, 1, 0.85, fade)
+    love.graphics.setLineWidth(12)
+    love.graphics.line(fake.x1, fake.y1, fake.x2, fake.y2)
+    love.graphics.setColor(1, 1, 1, fade)
+    love.graphics.setLineWidth(4)
+    love.graphics.line(fake.x1, fake.y1, fake.x2, fake.y2)
+    love.graphics.setColor(1, 0.3, 0.2, 0.8 * fade)
+    love.graphics.circle("fill", fake.x1, fake.y1, 70 * pulse)
+    love.graphics.setColor(1, 0.9, 0.5, fade)
+    love.graphics.circle("fill", fake.x1, fake.y1, 30)
+    love.graphics.setColor(1, 1, 1, fade)
+    love.graphics.circle("fill", fake.x1, fake.y1, 12)
+    love.graphics.setLineWidth(1)
+end)
+
+-- ---- Full Churgly boss (mirrors the real fight geometry)
+add("Churgly Boss", function(t)
+    local cf = require("src.churglyfight")
+    if not DV._bossGame then
+        DV._bossGame = {
+            player = {x = 640, y = 680, r = 18, eldritch = {},
+                      stats = {lifesteal = 0, killHeal = 0, reviveAvailable = false},
+                      kingVisions = false, disabled = false, invuln = 0},
+            persist = {}, enemies = {}, enemyBullets = {}, bullets = {},
+            pendingSpawns = {}, shockwaves = {},
+            screenFlash = 0, screenFlashHold = 0, kingFractalHold = 0,
+            backfireHold = 0,
+            font = love.graphics.getFont(),
+            bigFont = love.graphics.getFont(),
+            titleFont = love.graphics.getFont(),
+        }
+        -- Manually seed the boss struct so we don't trigger the audio swap
+        -- that Churglyfight.start does.
+        local majors = {}
+        for i = 1, 48, 6 do
+            majors[i] = {hp = 2600, maxHp = 2600, flash = 0, dead = false, idx = i}
+        end
+        DV._bossGame.churglyBoss = {
+            majors = majors, segPositions = {}, headPos = {x = 640, y = 180, r = 56},
+            head = {hp = 4500, maxHp = 4500, dead = false, flash = 0},
+            phase = "fight", attackTimer = 9999, specialTimer = 9999, bigTimer = 9999,
+            talkTimer = 9999, life = 0, deathTimer = 0,
+        }
+    end
+    cf.update(love.timer.getDelta(), DV._bossGame)
+    -- Drop any bullets/particles the preview produced so state doesn't grow
+    DV._bossGame.enemyBullets = {}
+    cf.draw(DV._bossGame)
+end)
+
 -- ---- Particle-driven effects
 add("Death burst", function(t)
     local period = math.floor(t / 1.2)

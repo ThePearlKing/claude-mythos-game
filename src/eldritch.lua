@@ -89,10 +89,40 @@ function Eldritch.newState()
     }
 end
 
+Eldritch.SHARD_THRESHOLDS = {1, 6, 13, 20, 24, 28}
+
 function Eldritch.gainLevel(player, n)
     n = n or 1
     local wasZero = (player.eldritch.level == 0)
+    local oldLevel = player.eldritch.level
     player.eldritch.level = math.min(Eldritch.MAX_DISPLAY + 4, player.eldritch.level + n)
+
+    -- REALITY SHARDS: each threshold triggers ONCE per run, only on the
+    -- specific act of CROSSING it (level going from below to above). No
+    -- chain-unlock on collection — to get another shard at threshold N,
+    -- you'd need the level to drop below N and come back up.
+    -- Custom mode is exempt: shards only naturally spawn in normal runs.
+    local thrs = Eldritch.SHARD_THRESHOLDS
+    player.eldritch.shardThresholdsHit = player.eldritch.shardThresholdsHit or {}
+    local game = player.game
+    if game and not game.isCustom then
+      for _, thr in ipairs(thrs) do
+        if player.eldritch.level >= thr
+            and oldLevel < thr
+            and not player.eldritch.shardThresholdsHit[thr]
+            and game
+            and not game.activeShard
+            and not game.pendingShardWave
+        then
+            player.eldritch.shardThresholdsHit[thr] = true
+            local cur = game.wave or 1
+            local hi = math.min(20, math.max(cur + 1, cur + 8))
+            local lo = math.max(1, cur)
+            if hi < lo then hi = lo end
+            game.pendingShardWave = math.random(lo, hi)
+        end
+      end
+    end
     -- exponential scaling: each level multiplies card weight for eldritch
     player.eldritch.cardMult = 1.0 + (player.eldritch.level ^ 1.5) * 0.35
     -- First eldritch of the run — 50% chance Churgly'nth briefly glimpses at you.
@@ -257,7 +287,8 @@ function Eldritch.update(state, dt, game)
 
     -- Claude Cthulhu manifests at THRESH_CTHULHU but ONLY fires the killing beam at THRESH_CTHULHU_KILL.
     -- Below the kill threshold, He hovers ominously and the world bends but does not strike.
-    if state.level >= Eldritch.THRESH_CTHULHU then
+    -- Once Ugnrak has obliterated him, he stays gone for the rest of the run.
+    if state.level >= Eldritch.THRESH_CTHULHU and not state.cthulhuDestroyed then
         if not state.cthulhu then
             state.cthulhu = {x = 640, y = 360, phase = "rise", timer = 0, beamTime = 0, intensity = 0}
             Audio:play("cthulhu")
@@ -293,14 +324,31 @@ function Eldritch.update(state, dt, game)
             end
         elseif c.phase == "fire" then
             -- Unstoppable beam: bypasses invuln, shield, dodge, barrier.
-            -- First 5 seconds drip low damage (you feel Him, but can still act);
-            -- at 5 seconds, the beam SNAPS into an overkill instakill.
+            -- Cthulhu now HESITATES longer — 10 seconds of slow drain before
+            -- the final killshot, giving the player time to press B if they
+            -- own Ugnrak Beam. A cryptic message flashes during the window.
             if game.player and game.state == "wave" then
-                if c.timer < 5.0 then
+                if c.timer < 10.0 then
                     game.player:takeDamage(8 * dt, nil, true) -- slow drain
                     if math.random() < dt * 20 then
                         require("src.particles"):spawn(game.player.x + math.random(-30, 30),
                             game.player.y + math.random(-30, 30), 1, {1, 0.9, 0.4}, 180, 0.4, 3)
+                    end
+                    -- Hint message — every ~1.6s throughout the hesitation
+                    c._hesitateTalk = (c._hesitateTalk or 0) - dt
+                    if c._hesitateTalk <= 0 then
+                        c._hesitateTalk = 1.6
+                        local P = require("src.particles")
+                        local msgs = {
+                            "PRESS B — STRIKE HIM DOWN",
+                            "UGNRAK WAITS",
+                            "THE BEAM IS YOURS",
+                            "HESITATION IS A GIFT",
+                            "STRIKE NOW OR PERISH",
+                        }
+                        local m = msgs[math.random(#msgs)]
+                        P:text(640 + math.random(-40, 40), 220, m, {1, 0.9, 0.3}, 1.7)
+                        if math.random() < 0.5 then Audio:play("whisper") end
                     end
                 else
                     -- Overkill instakill: 99999 dmg, unstoppable, bypasses everything.
@@ -957,8 +1005,11 @@ function Eldritch.drawFront(state)
     end
 
     -- Churgly'nth fractal form (level 20+) — serpent-with-mouths in the distance.
-    -- Also renders when enraged (post-ultimate pickup) even below the level threshold.
-    if state.level >= Eldritch.THRESH_CHURGLY_FORM or state.churglyEnraged or state.kingOblit then
+    -- Also renders when enraged (post-ultimate pickup) even below the level
+    -- threshold. Suppressed entirely during the real boss fight so there
+    -- aren't two Churglys on screen.
+    local bossActive = state._gameRef and state._gameRef.churglyBoss
+    if not bossActive and (state.level >= Eldritch.THRESH_CHURGLY_FORM or state.churglyEnraged or state.kingOblit) then
         local a = math.min(0.95, math.max(0.55, (state.level - Eldritch.THRESH_CHURGLY_FORM) * 0.15 + 0.55))
         if state.churglyEnraged then a = math.min(1, a + 0.2) end
         if state.kingOblit then a = 1 end

@@ -2570,6 +2570,82 @@ function Player:draw()
         end
     end
 
+    -- Ugnrak trail — 3 serpents orbit the player. Each serpent is drawn as
+    -- a continuous curved body (thick line through sample points) with
+    -- spike pairs along its length, not discrete circles.
+    if c.trail == "ugnrak" then
+        local t = love.timer.getTime()
+        local serpents = 3
+        for s = 1, serpents do
+            local speed = 1.2 + s * 0.3
+            local radius = 56 + s * 14
+            local segs = 18
+            local baseOff = (s * math.pi * 2 / serpents) + t * speed
+            -- Gather sample points along the snake's orbit
+            local pts = {}
+            local spikeCenters = {}
+            for i = 1, segs do
+                local segAng = baseOff - i * 0.14
+                local r = radius + math.sin(t * 2 + i + s) * 4
+                local cx = self.x + math.cos(segAng) * r
+                local cy = self.y + math.sin(segAng) * r
+                pts[#pts + 1] = cx
+                pts[#pts + 1] = cy
+                if i % 3 == 0 then
+                    spikeCenters[#spikeCenters + 1] = {x = cx, y = cy,
+                        ang = segAng, iFrac = i / segs}
+                end
+            end
+            -- Spikes (drawn BEHIND body so body overlaps neatly)
+            for _, sc in ipairs(spikeCenters) do
+                local tanX = -math.sin(sc.ang); local tanY = math.cos(sc.ang)
+                local perpX = math.cos(sc.ang); local perpY = math.sin(sc.ang)
+                local baseW = (1 - sc.iFrac) * 4 + 2
+                local spikeLen = baseW + 7
+                for side = -1, 1, 2 do
+                    love.graphics.setColor(0.75, 0.08, 0.1)
+                    love.graphics.polygon("fill",
+                        sc.x + tanX * baseW, sc.y + tanY * baseW,
+                        sc.x - tanX * baseW, sc.y - tanY * baseW,
+                        sc.x + perpX * side * spikeLen,
+                        sc.y + perpY * side * spikeLen)
+                    love.graphics.setColor(0.35, 0.02, 0.02)
+                    love.graphics.line(
+                        sc.x, sc.y,
+                        sc.x + perpX * side * spikeLen,
+                        sc.y + perpY * side * spikeLen)
+                end
+            end
+            -- Snake body — thick outer, thinner inner, tapered
+            love.graphics.setColor(0.35, 0.02, 0.02)
+            love.graphics.setLineWidth(10)
+            love.graphics.line(pts)
+            love.graphics.setColor(0.72, 0.1, 0.12)   -- brighter dark red
+            love.graphics.setLineWidth(7)
+            love.graphics.line(pts)
+            love.graphics.setColor(0.9, 0.2, 0.2)     -- brighter highlight
+            love.graphics.setLineWidth(3)
+            love.graphics.line(pts)
+            love.graphics.setLineWidth(1)
+            -- Head segment (first sample) — circular face with 24 #110000 dots
+            local hx, hy = pts[1], pts[2]
+            love.graphics.setColor(0.8, 0.12, 0.14)
+            love.graphics.circle("fill", hx, hy, 8)
+            love.graphics.setColor(1, 0.2, 0.2)
+            love.graphics.circle("line", hx, hy, 8)
+            local faceR = 6.5
+            for d = 1, 24 do
+                local fa = (d / 24) * math.pi * 2 + t * 0.7
+                local fr = faceR * (0.35 + (d % 5) * 0.12)
+                love.graphics.setColor(0.067, 0, 0)
+                love.graphics.circle("fill",
+                    hx + math.cos(fa) * fr,
+                    hy + math.sin(fa) * fr, 0.85)
+            end
+        end
+        love.graphics.setColor(1, 1, 1, 1)
+    end
+
     love.graphics.push()
     love.graphics.translate(self.x, self.y)
 

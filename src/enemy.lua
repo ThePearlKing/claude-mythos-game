@@ -155,6 +155,30 @@ function Enemy:update(dt, game)
     if self.burnTime > 0 then
         self.burnTime = self.burnTime - dt
         self.hp = self.hp - self.burnDmg * dt
+        -- Fire-spread: each frame there's a chance the burn jumps to a
+        -- nearby non-burning enemy, carrying 70% of the remaining duration.
+        -- Throttled so flames don't erupt every frame.
+        self.burnSpreadCD = (self.burnSpreadCD or 0) - dt
+        if self.burnSpreadCD <= 0 and game and game.enemies and math.random() < 0.5 then
+            self.burnSpreadCD = 0.25 + math.random() * 0.2
+            for _, other in ipairs(game.enemies) do
+                if other ~= self and not other.dead and (other.burnTime or 0) <= 0 then
+                    local odx = other.x - self.x
+                    local ody = other.y - self.y
+                    if odx * odx + ody * ody < 80 * 80 then
+                        other.burnTime = math.max(1.5, self.burnTime * 0.7)
+                        other.burnDmg = self.burnDmg
+                        -- Fire arc between the two for visual feedback
+                        for s = 1, 6 do
+                            local fx = self.x + odx * (s / 6) + math.random(-3, 3)
+                            local fy = self.y + ody * (s / 6) + math.random(-3, 3)
+                            P:spawn(fx, fy, 1, {1, 0.6, 0.15}, 60, 0.35, 3)
+                        end
+                        break
+                    end
+                end
+            end
+        end
         -- Much thicker fire plume — noticeable spray of flame particles
         if math.random() < 0.85 then
             local ox = math.random(-self.r, self.r) * 0.7
@@ -228,12 +252,26 @@ function Enemy:update(dt, game)
                 self.x = math.max(40, math.min(1240, self.x))
                 self.y = math.max(80, math.min(680, self.y))
                 P:spawn(self.x, self.y, 16, self.color, 180, 0.4, 3)
-                -- 5-bullet spread after reappear
-                for i = -2, 2 do
-                    local ang = math.atan2(dy, dx) + i * 0.18
-                    local b = Bullet.new(self.x, self.y, math.cos(ang) * 280, math.sin(ang) * 280, self.dmg, false)
-                    b.color = self.bulletColor; b.size = 6
-                    table.insert(game.enemyBullets, b)
+                -- On Nightmare/Apocalypse the Blink's bullets get softened
+                -- (fewer, wider spread, slower) so they're not one-shotting
+                -- on top of the difficulty multiplier. Flag is set in
+                -- Game:beginWave when difficulty is nightmare+.
+                if self.softBlinkBullets then
+                    for i = -1, 1 do
+                        local ang = math.atan2(dy, dx) + i * 0.45
+                        local b = Bullet.new(self.x, self.y,
+                            math.cos(ang) * 180, math.sin(ang) * 180, self.dmg, false)
+                        b.color = self.bulletColor; b.size = 6
+                        table.insert(game.enemyBullets, b)
+                    end
+                else
+                    for i = -2, 2 do
+                        local ang = math.atan2(dy, dx) + i * 0.18
+                        local b = Bullet.new(self.x, self.y,
+                            math.cos(ang) * 280, math.sin(ang) * 280, self.dmg, false)
+                        b.color = self.bulletColor; b.size = 6
+                        table.insert(game.enemyBullets, b)
+                    end
                 end
                 self.blinkT = 1.6 + math.random() * 0.6
             end

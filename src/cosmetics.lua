@@ -246,6 +246,8 @@ C.items = {
         {id="chaos",      name="Chaos",           hint="Win a run on Apocalypse",     unlock=apocalypseWins(1)},
         {id="super_saiyan", name="Super Saiyan",  hint="Global Rep >= 85",            unlock=rep(85)},
         {id="wake",       name="Wake of Horrors", hint="WIN a run at eldritch >= 18", unlock=winEld(18)},
+        {id="ugnrak",     name="Ugnrak",          hint="???", secretName="Ugnrak",
+            unlock=function(p) return (p.churglyDefeated or 0) == 1 end},
     },
 }
 

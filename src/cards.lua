@@ -337,6 +337,15 @@ Cards.pool = {
     {id="eld_tally", name="Forbidden Tally", rarity="eldritch", color={0.65,0.25,0.85}, eldritch=true, requiresEldritch=1, commonEldritch=true, oncePerRun=true,
         desc="+1 eldritch. A glitched counter haunts the corner of your eye.",
         apply=function(p) p.eldritchCounterUnlocked = true; require("src.eldritch").gainLevel(p, 1) end},
+    -- Ugnrak Beam: a player-fired crimson annihilation beam. Requires 6
+    -- Reality Shards to fire — press B to unleash. If you don't have the
+    -- shards, it backfires and obliterates you with 12s of persistent
+    -- ripples+fractals over every menu after death.
+    {id="eld_ugnrak", name="Ugnrak Beam", rarity="eldritch", color={1,0.1,0.15}, eldritch=true,
+        requiresEldritch=24, oncePerRun=true,
+        desc="+24 eldritch. Press B to fire a colossal red beam. Costs 6 Reality Shards or BACKFIRES.",
+        apply=function(p) p.ugnrakBeam = true; require("src.eldritch").gainLevel(p, 24) end},
+
     -- Secret: Void Sea. Unlocks the ability to dive beneath the battlefield.
     {id="eld_voidsea", name="Void Sea", rarity="eldritch", color={0.25,0.18,0.45}, eldritch=true, requiresEldritch=5, oncePerRun=true,
         desc="+3 eldritch. The floor is not a floor. Press S at the bottom edge...",

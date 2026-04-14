@@ -776,6 +776,191 @@ local function buildWhisperwaveCool()
     local src = love.audio.newSource(data); src:setLooping(true); src:setVolume(0.6); return src
 end
 
+-- Epic chilling take on Whisperwave: 26 bars with a slower burn into a
+-- bigger climax than before. Structure:
+--   1-5   : ambient intro (pads + sub drone, no drums)
+--   6-10  : slow tribal kick arrives, main lead eases in
+--   11-15 : choir counter-melody layers in, bass taiko doubles
+--   16-20 : tension — kicks heavier, snares on 2/4, ride picks up
+--   21-22 : pre-climax riser — swelling sub, rising whispers
+--   23-25 : EPIC FINALE — double-time kicks, triple-octave lead stack,
+--           thunder 27Hz hits, choir wall, every instrument at full
+--   26    : resolution — pads ring out into the loop point
+-- Unlisted in the playlist UI — accessible from the sound debug menu only.
+local function buildWhisperwaveEpic()
+    local beat = 60 / 66
+    local barDur = beat * 4
+    local bars = 26
+    local total = barDur * bars
+    local samples = math.floor(rate * total)
+    local data = love.sound.newSoundData(samples, rate, 16, 1)
+    -- Progression (26 bars)
+    local progression = {
+        {N.A2, N.C3, N.E3, N.A3},   -- 1  intro Am
+        {N.A2, N.C3, N.E3, N.A3},   -- 2
+        {N.F2, N.A2, N.C3, N.E3},   -- 3
+        {N.F2, N.A2, N.C3, N.E3},   -- 4
+        {N.A2, N.C3, N.E3, N.A3},   -- 5
+        {N.A2, N.C3, N.E3, N.A3},   -- 6  kick enters
+        {N.F2, N.A2, N.C3, N.E3},   -- 7
+        {N.D2, N.F2, N.A2, N.D3},   -- 8
+        {N.D2, N.F2, N.A2, N.D3},   -- 9
+        {N.E2, N.G2, N.B2, N.E3},   -- 10
+        {N.A2, N.C3, N.E3, N.A3},   -- 11 choir enters
+        {N.F2, N.A2, N.C3, N.E3},   -- 12
+        {N.D2, N.F2, N.A2, N.D3},   -- 13
+        {N.E2, N.G2, N.B2, N.E3},   -- 14
+        {N.A2, N.C3, N.E3, N.A3},   -- 15
+        {N.F2, N.A2, N.C3, N.E3},   -- 16 tension
+        {N.D2, N.F2, N.A2, N.D3},   -- 17
+        {N.D2, N.F2, N.A2, N.D3},   -- 18
+        {N.E2, N.G2, N.B2, N.E3},   -- 19
+        {N.E2, N.G2, N.B2, N.E3},   -- 20
+        {N.F2, N.A2, N.C3, N.E3},   -- 21 riser
+        {N.E2, N.G2, N.B2, N.E3},   -- 22
+        {N.A2, N.C3, N.E3, N.A3},   -- 23 FINALE
+        {N.F2, N.A2, N.C3, N.E3},   -- 24
+        {N.D2, N.F2, N.A2, N.D3},   -- 25
+        {N.A2, N.C3, N.E3, N.A3},   -- 26 resolution
+    }
+    -- Main lead motif — enters at bar 6, peaks bars 23-25 with octave climb
+    local lead = {
+        nil, nil, nil, nil, nil,            -- 1-5 silent intro
+        N.E4, N.G4, N.A4, N.C5, N.A4,       -- 6-10 first phrase
+        N.F4, N.E4, N.G4, N.A4, N.C5,       -- 11-15
+        N.B4, N.A4, N.F4, N.G4, N.E4,       -- 16-20 descending tension
+        N.A4, N.C5,                         -- 21-22 riser climb
+        N.E5, N.G5, N.A5,                   -- 23-25 OCTAVE UP climax
+        N.E5,                               -- 26 resolution
+    }
+    -- Choir counter-melody — enters bar 11
+    local counter = {
+        nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,       -- 1-10 silent
+        N.A5, N.A5, N.C6, N.F5, N.A5,                            -- 11-15
+        N.G5, N.E5, N.D5, N.E5, N.G5,                            -- 16-20
+        N.A5, N.C6,                                              -- 21-22
+        N.E6, N.G6, N.A6,                                        -- 23-25 finale
+        N.A5,                                                    -- 26
+    }
+    local kickTimes = {}
+    for b = 1, bars do
+        local bt = (b - 1) * barDur
+        local ch = progression[b]
+        local isIntro  = b <= 5
+        local isBuild  = b >= 16 and b <= 20
+        local isRiser  = b == 21 or b == 22
+        local isFinale = b >= 23 and b <= 25
+        local isCoda   = b == 26
+        -- Pad stack: low drone + mid chord + high shimmer.
+        -- Intensity grows with section.
+        local padMid  = isFinale and 0.26 or ((isBuild or isRiser) and 0.19 or 0.15)
+        local padLow  = isFinale and 0.20 or ((isBuild or isRiser) and 0.14 or 0.12)
+        local padHigh = isFinale and 0.14 or ((isBuild or isRiser) and 0.08 or 0.06)
+        addPad(data, samples, ch, bt, barDur, padMid)
+        addPad(data, samples, {ch[1] * 0.5, ch[2] * 0.5}, bt, barDur, padLow)
+        addPad(data, samples, {ch[3] * 2, ch[4] * 2}, bt, barDur, padHigh)
+        -- Taiko bass
+        if not isIntro then
+            local bassAmp = isFinale and 0.34 or ((isBuild or isRiser) and 0.26 or 0.2)
+            addBass(data, samples, ch[1] * 0.5, bt, beat * 1.8, bassAmp)
+            addBass(data, samples, ch[1] * 0.5, bt + 2 * beat, beat * 1.8, bassAmp)
+            if isBuild or isRiser or isFinale then
+                addBass(data, samples, ch[1] * 0.5, bt + 3 * beat, beat * 0.9, bassAmp * 0.7)
+            end
+        end
+        -- Tribal kick pattern
+        if not isIntro then
+            local kickAmp = isFinale and 0.65 or ((isBuild or isRiser) and 0.45 or 0.3)
+            addKick(data, samples, bt, kickAmp); table.insert(kickTimes, bt)
+            addKick(data, samples, bt + 2 * beat, kickAmp * 0.9)
+            table.insert(kickTimes, bt + 2 * beat)
+            -- Riser: extra kick on beat 4 to push momentum
+            if isRiser then
+                addKick(data, samples, bt + 3 * beat, kickAmp * 0.85)
+                table.insert(kickTimes, bt + 3 * beat)
+            end
+            -- Finale: DOUBLE-TIME kicks — 8 hits per bar for the climax
+            if isFinale then
+                for i = 1, 7 do
+                    addKick(data, samples, bt + i * (beat / 2), kickAmp * (0.7 + (i % 2) * 0.15))
+                    table.insert(kickTimes, bt + i * (beat / 2))
+                end
+            end
+        end
+        -- Hats: sparse from bar 6, denser through the build + finale
+        if b >= 6 and not isCoda then
+            local hatSlots = isFinale and 16 or ((isBuild or isRiser) and 8 or 4)
+            for i = 0, hatSlots - 1 do
+                addHat(data, samples, bt + i * (barDur / hatSlots),
+                    isFinale and 0.08 or 0.04, (i % math.max(1, hatSlots / 2)) == (hatSlots / 2 - 1))
+            end
+        end
+        -- Snare/clap accents on 2 and 4 during build + riser + finale
+        if isBuild or isRiser or isFinale then
+            local sAmp = isFinale and 0.3 or 0.2
+            addSnare(data, samples, bt + beat, sAmp)
+            addSnare(data, samples, bt + 3 * beat, sAmp)
+            -- Finale: extra snare rolls on 2.5 + 4.5
+            if isFinale then
+                addSnare(data, samples, bt + beat * 1.5, 0.2)
+                addSnare(data, samples, bt + beat * 3.5, 0.2)
+            end
+        end
+        -- Main lead
+        local note = lead[b]
+        if note then
+            local leadAmp = isFinale and 0.18 or ((isBuild or isRiser) and 0.12 or 0.09)
+            addNote(data, samples, note, bt + beat * 0.5, beat * 2.5, leadAmp, "triangle", 0.1, 0.5)
+            addNote(data, samples, note, bt + beat * 0.5 + 0.35, beat * 2.0, leadAmp * 0.6, "sine", 0.1, 0.4)
+            addNote(data, samples, note, bt + beat * 0.5 + 0.70, beat * 1.6, leadAmp * 0.35, "sine", 0.1, 0.3)
+            -- Finale: TRIPLE-octave stack for grandeur
+            if isFinale then
+                addNote(data, samples, note * 2, bt + beat * 0.5, beat * 3, 0.09, "triangle", 0.1, 0.5)
+                addNote(data, samples, note * 4, bt + beat * 0.5, beat * 3, 0.04, "sine", 0.1, 0.5)
+                addNote(data, samples, note * 0.5, bt + beat * 0.5, beat * 3, 0.06, "sine", 0.1, 0.5)
+            end
+        end
+        -- Choir counter-melody
+        local cnote = counter[b]
+        if cnote then
+            local cAmp = isFinale and 0.16 or ((isBuild or isRiser) and 0.1 or 0.07)
+            addNote(data, samples, cnote, bt, beat * 4, cAmp, "sine", 0.2, 0.6)
+            addNote(data, samples, cnote * 2, bt, beat * 4, cAmp * 0.4, "sine", 0.25, 0.5)
+            if isFinale then
+                addNote(data, samples, cnote * 0.5, bt, beat * 4, cAmp * 0.5, "sine", 0.25, 0.5)
+            end
+        end
+        -- Ghost whispers — quiet intro, much more during finale
+        local whisperCount = isFinale and 10 or (isRiser and 7 or (isBuild and 5 or (b >= 6 and 3 or 2)))
+        for i = 1, whisperCount do
+            local wt = bt + math.random() * barDur
+            local wf = 1600 + math.random() * 2400
+            addNote(data, samples, wf, wt, 0.4 + math.random() * 0.5, 0.025, "sine", 0.08, 0.18)
+        end
+        -- Riser: rising sub-pulse that sweeps from low to high across bars
+        if isRiser then
+            local localT = (b - 21) / 2  -- 0..1 across the two riser bars
+            local riseStart = 27.5 * (1 + localT * 2)
+            addNote(data, samples, riseStart, bt, barDur, 0.14, "saw", 0.05, 0.2)
+        end
+        -- Thunder-low hits EVERY kick in the finale
+        if isFinale then
+            addBass(data, samples, 27.5, bt, beat * 1.0, 0.35)
+            addBass(data, samples, 27.5, bt + 2 * beat, beat * 1.0, 0.35)
+            -- Overdriven saw stab on beat 1 for epic flavor
+            addNote(data, samples, ch[1], bt, beat * 0.4, 0.18, "saw", 0.02, 0.15)
+        end
+        -- Resolution bar 20 — only pad + lead tail + silent drums for breathing
+        if isCoda then
+            addNote(data, samples, ch[1], bt, beat * 4, 0.18, "triangle", 0.2, 0.8)
+            addNote(data, samples, ch[3], bt, beat * 4, 0.12, "sine", 0.2, 0.8)
+        end
+    end
+    -- Sidechain pump so the kicks punch through the pad wall
+    applyPumping(data, samples, kickTimes, 0.2, 0.22)
+    local src = love.audio.newSource(data); src:setLooping(true); src:setVolume(0.65); return src
+end
+
 local function buildVapor()
     local beat = 60 / 70
     local barDur = beat * 4
@@ -1090,6 +1275,7 @@ function Audio:load()
         lofi           = buildLofi,
         vapor          = buildVapor,
         eldritch_theme = buildWhisperwaveCool,
+        whisperwave_epic = buildWhisperwaveEpic,
         jazz           = buildJazz,
         drumnbass      = buildDrumNBass,
         choir          = buildChoir,
@@ -1129,6 +1315,25 @@ end
 
 function Audio:playMusic(which)
     which = which or "normal"
+    -- "darkened": play the current theme with pitch shifted down — slower +
+    -- lower. If the theme is already the eldritch one, drop pitch further so
+    -- the notes feel roughly twice as long.
+    if which == "darkened" then
+        if self.bossMusic then self.bossMusic:stop() end
+        if self.eldritchMusic then self.eldritchMusic:stop() end
+        if self.voidseaMusic then self.voidseaMusic:stop() end
+        if self.music then
+            -- Whisperwave stays at full speed — it's already the eldritch
+            -- track. Other themes get pitched down for that warped eerie
+            -- take on your own playlist.
+            local pitch = (self.currentThemeId == "eldritch_theme") and 1.0 or 0.72
+            self.music:setPitch(pitch)
+            if not self.music:isPlaying() then self.music:play() end
+        end
+        return
+    end
+    -- Any non-darkened transition resets the main theme's pitch.
+    if self.music then self.music:setPitch(1.0) end
     local tracks = {normal = self.music, boss = self.bossMusic, eldritch = self.eldritchMusic, voidsea = self.voidseaMusic}
     local target = tracks[which]
     if target and target:isPlaying() then return end

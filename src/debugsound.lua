@@ -25,6 +25,7 @@ local function buildItems()
     local themeOrder = {
         "default", "synthwave", "chiptune", "doom", "lofi", "vapor",
         "eldritch_theme", "jazz", "drumnbass", "choir", "arcade",
+        "whisperwave_epic", -- unlisted epic chill track, debug-only
     }
     for _, id in ipairs(themeOrder) do
         items[#items + 1] = {kind = "theme", id = id, name = "Theme: " .. id}

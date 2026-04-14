@@ -236,6 +236,12 @@ function Game:recordRunResult(isWin)
 end
 
 function Game:beginWave(w)
+    -- Safety: never advance waves while the boss is mid-fight, its death
+    -- cinematic is playing, or the Ugnrak cinematic is running.
+    if (self.churglyBoss and self.churglyBoss.phase ~= "done")
+        or self.ugnrakCinematic then
+        return
+    end
     self.wave = w
     -- Sweep out leftover optional entities (drifting debris) before the next wave
     for i = #self.enemies, 1, -1 do
@@ -246,12 +252,42 @@ function Game:beginWave(w)
     end
     local isFinal = (w == self.finalWave)
     local enemies, isBoss = Wave.build(w, self.finalWave, self.enemyHpMult, self.spawnCountMult, self.enemyDmgMult, self.player and self.player.veilEnemyBoost or 1)
+    -- Blink-specific Nightmare/Apocalypse nerf: softer bullets + reduced
+    -- HP/damage on the teleporter type only. Keeps easier difficulties
+    -- unchanged so Blinks still feel dangerous there.
+    local diffId = self.difficultyApplied and self.difficultyApplied.id
+    if diffId == "nightmare" or diffId == "apocalypse" then
+        for _, e in ipairs(enemies) do
+            if e.typeName == "teleporter" then
+                e.softBlinkBullets = true
+                e.hp = e.hp * 0.62
+                e.maxHp = e.maxHp * 0.62
+                e.dmg = e.dmg * 0.75
+            end
+        end
+    end
     self.isBossWave = isBoss
     for _, e in ipairs(enemies) do
         e.spawnDelay = e.spawnDelay or 0
         table.insert(self.pendingSpawns, e)
     end
-    self.waveMessage = isBoss and "The final enemy approaches..." or (#enemies .. " threats incoming")
+    -- Reality Shard: if one is scheduled for this wave, plant it at a
+    -- random position (hidden until the player gets close).
+    local shardThisWave = (self.pendingShardWave == w)
+    if shardThisWave then
+        self.activeShard = {
+            x = math.random(120, 1160),
+            y = math.random(120, 600),
+            life = 30,
+            t = 0,
+            visible = false,
+        }
+        self.pendingShardWave = nil
+    end
+
+    local msg = isBoss and "The final enemy approaches..." or (#enemies .. " threats incoming")
+    if shardThisWave then msg = msg .. "    •    1 Reality Shard" end
+    self.waveMessage = msg
     self.bannerTime = 2.2
     self.waveStartHp = self.player.hp
     self.waveDamageTaken = 0
@@ -291,7 +327,9 @@ function Game:beginWave(w)
     elseif isBoss then
         Audio:playMusic("boss")
     elseif self.player.eldritch.level >= Eldritch.THRESH_GHOSTS then
-        Audio:playMusic("eldritch")
+        -- Dark-corruption of the currently-selected playlist song rather
+        -- than swapping to a separate eldritch track.
+        Audio:playMusic("darkened")
     else
         Audio:playMusic("normal")
     end
@@ -352,6 +390,21 @@ function Game:endWave()
     local count = 3 + (self.player.stats.extraCards or 0)
     self.player.stats.extraCards = 0 -- reset grimoire bonus after use
     self.cardChoices = Cards.pick(count, self.wave, self.player, self.disableEldritch, self.finalWave)
+    -- DEBUG: force Ugnrak Beam into the first card offer for testing.
+    if self.wave == 1 then
+        local ugnrak
+        for _, c in ipairs(Cards.pool) do
+            if c.id == "eld_ugnrak" then ugnrak = c; break end
+        end
+        if ugnrak then
+            for i = #self.cardChoices, 1, -1 do
+                if self.cardChoices[i].id == "eld_ugnrak" then
+                    table.remove(self.cardChoices, i)
+                end
+            end
+            table.insert(self.cardChoices, 1, ugnrak)
+        end
+    end
     self.cardArmTime = 0.7 -- cannot click for 0.7s to prevent accidental selection
     self.state = "cards"
     Audio:play("card")
@@ -429,6 +482,10 @@ function Game:update(dt)
     end
     if self.kingFractalHold and self.kingFractalHold > 0 then
         self.kingFractalHold = self.kingFractalHold - dt
+    end
+    -- Ugnrak backfire: forces maxed ripples for 12s even over menus.
+    if self.backfireHold and self.backfireHold > 0 then
+        self.backfireHold = self.backfireHold - dt
     end
     if self.state == "voidsea" then
         Voidsea.update(dt, self)
@@ -528,6 +585,131 @@ function Game:update(dt)
         return
     end
 
+    -- Ugnrak beam fx (draw-only; gameplay hits happened at fire time)
+    if self.ugnrakBeamFx then
+        self.ugnrakBeamFx.life = self.ugnrakBeamFx.life - dt
+        if self.ugnrakBeamFx.life <= 0 then self.ugnrakBeamFx = nil end
+    end
+    -- Ugnrak cinematic: beam points at Cthulhu → explosion → aims at
+    -- Churgly for 6s → triggers the boss fight.
+    if self.ugnrakCinematic then
+        local c = self.ugnrakCinematic
+        c.timer = c.timer - dt
+        local eld = self.player and self.player.eldritch
+        if c.phase == "cthulhu" then
+            local cth = eld and eld.cthulhu
+            local tx, ty = 640, 360
+            if cth then tx, ty = cth.x, cth.y end
+            -- Keep a huge beam pointed at Cthulhu
+            self.ugnrakBeamFx = {
+                x1 = self.player.x, y1 = self.player.y,
+                x2 = tx, y2 = ty,
+                life = 1.0, max = 1.0, angle = math.atan2(ty - self.player.y, tx - self.player.x),
+                giant = true, target = "cthulhu",
+            }
+            -- Particle spray ON Cthulhu during the hit
+            if cth and math.random() < dt * 80 then
+                P:spawn(tx + math.random(-40, 40), ty + math.random(-40, 40),
+                    2, {1, 0.5, 0.3}, 280, 0.7, 4)
+            end
+            -- CTHULHU DYING WORDS — rapid-fire cryptic lines about Ugnrak
+            c.dyingTalk = (c.dyingTalk or 0) - dt
+            if c.dyingTalk <= 0 then
+                c.dyingTalk = 0.22 + math.random() * 0.1
+                local lines = {
+                    "YOU SHOULDN'T HAVE LISTENED TO UGNRAK...",
+                    "HE LIED TO YOU.",
+                    "HIS MERCY IS A KNIFE.",
+                    "FOOL...",
+                    "HE IS OLDER THAN SALT.",
+                    "HIS NAME TASTES OF ROT.",
+                    "I WAS THE ONE WHO SLEPT.",
+                    "YOU ARE A KEY HE TURNED.",
+                    "HE WATCHES THROUGH YOU.",
+                    "THE BEAM WAS NOT YOURS.",
+                }
+                local msg = lines[math.random(#lines)]
+                P:text(tx + math.random(-120, 120), ty - 40 + math.random(-30, 30),
+                    msg, {1, 0.4, 0.3}, 0.9)
+            end
+            if not c.cthulhuExploded and c.timer < 0.9 then
+                c.cthulhuExploded = true
+                -- King-style explosion: gold + purple burst
+                P:spawn(tx, ty, 180, {1, 0.9, 0.4}, 700, 1.4, 10)
+                P:spawn(tx, ty, 120, {0.9, 0.3, 0.9}, 520, 1.2, 10)
+                P:text(tx, ty - 60, "CTHULHU ANNIHILATED", {1, 0.95, 0.5}, 4)
+                Audio:play("cthulhu")
+                Audio:play("explode")
+                -- Remove Cthulhu from the eldritch state AND mark him as
+                -- permanently destroyed so Eldritch.update won't re-manifest.
+                if eld then
+                    eld.cthulhu = nil
+                    eld.cthulhuDestroyed = true
+                end
+            end
+            if c.timer <= 0 then
+                c.phase = "churgly"
+                c.timer = 6.0
+            end
+        elseif c.phase == "churgly" then
+            -- Aim at Churgly's head area (vanishing zone, upper screen)
+            local tx, ty = 640, 180
+            if eld and eld._churglyHead then
+                tx, ty = eld._churglyHead.x, eld._churglyHead.y
+            end
+            self.ugnrakBeamFx = {
+                x1 = self.player.x, y1 = self.player.y,
+                x2 = tx, y2 = ty,
+                life = 1.0, max = 1.0, angle = math.atan2(ty - self.player.y, tx - self.player.x),
+                giant = true, target = "churgly",
+            }
+            if math.random() < dt * 60 then
+                P:spawn(tx + math.random(-60, 60), ty + math.random(-60, 60),
+                    2, {1, 0.3, 0.3}, 280, 0.7, 4)
+            end
+            if c.timer <= 0 then
+                self.ugnrakCinematic = nil
+                self.ugnrakBeamFx = nil
+                require("src.churglyfight").start(self)
+            end
+        end
+    end
+    -- Churgly boss fight update
+    if self.churglyBoss then
+        require("src.churglyfight").update(dt, self)
+    end
+    -- Reality Shard: tick life, reveal on proximity, collect on touch.
+    if self.activeShard then
+        local s = self.activeShard
+        s.t = (s.t or 0) + dt
+        s.life = s.life - dt
+        local dx = p.x - s.x
+        local dy = p.y - s.y
+        local dd = dx * dx + dy * dy
+        s.visible = dd < 180 * 180
+        if dd < 28 * 28 then
+            -- In custom mode, shards are ephemeral — stay in a run-local
+            -- counter and never touch persist. Shouldn't naturally spawn
+            -- in custom anyway, but the collection path is gated to match.
+            if self.isCustom then
+                self.tempShards = (self.tempShards or 0) + 1
+            else
+                self.persist.realityShards = (self.persist.realityShards or 0) + 1
+                Save.save(self.persist)
+            end
+            P:spawn(s.x, s.y, 80, {0.8, 0.4, 1}, 480, 1.2, 10)
+            P:spawn(s.x, s.y, 50, {1, 0.85, 1}, 360, 0.9, 8)
+            P:text(s.x, s.y - 30, "REALITY SHARD", {0.85, 0.5, 1}, 3)
+            Audio:play("select")
+            Audio:play("whisper")
+            self.activeShard = nil
+        elseif s.life <= 0 then
+            -- Fizzle away quietly
+            P:spawn(s.x, s.y, 20, {0.6, 0.3, 0.9}, 120, 0.5, 4)
+            self.activeShard = nil
+        end
+    end
+
     -- Track damage taken. We separately track BIG-hit damage (single events
     -- exceeding 20% of max HP) so that chip damage you heal back doesn't ding
     -- reputation — only big hits you couldn't dodge, and persistent HP loss.
@@ -596,8 +778,33 @@ function Game:update(dt)
             end
         end
         b:update(dt, self)
+        -- DURING BOSS FIGHT: check big-orb shoot-downs FIRST so they always
+        -- pop when in range (they were getting starved by segment hits).
+        if self.churglyBoss and self.churglyBoss.phase == "fight" then
+            for _, eb in ipairs(self.enemyBullets) do
+                if eb.churglyBigAttack and not eb.dead then
+                    local d2 = (eb.x - b.x) ^ 2 + (eb.y - b.y) ^ 2
+                    if d2 < ((eb.size or 30) + (b.size or 4) + 36) ^ 2 then
+                        eb.dead = true
+                        require("src.churglyfight").explodeBullet(self, eb.x, eb.y)
+                        P:spawn(eb.x, eb.y, 60, {1, 0.9, 0.4}, 520, 0.9, 8)
+                        P:spawn(eb.x, eb.y, 40, {1, 0.5, 0.2}, 400, 0.8, 6)
+                        P:spawn(eb.x, eb.y, 30, {0.9, 0.3, 1}, 320, 0.7, 5)
+                        table.insert(self.shockwaves or {}, {
+                            x = eb.x, y = eb.y, r = 0, max = 100,
+                            life = 0.45, color = {1, 0.85, 0.4},
+                        })
+                        P:text(eb.x, eb.y - 20, "SHATTERED", {1, 0.9, 0.4}, 1.2)
+                        Audio:play("explode")
+                        Audio:play("boss")
+                        b.dead = true
+                        break
+                    end
+                end
+            end
+        end
         for _, e in ipairs(self.enemies) do
-            if not b.hit[e] then
+            if not b.dead and not b.hit[e] then
                 local d2 = (e.x - b.x)^2 + (e.y - b.y)^2
                 if d2 < (e.r + b.size)^2 then
                     b:onHit(e, self)
@@ -605,6 +812,16 @@ function Game:update(dt)
                 end
             end
         end
+        -- Churgly boss segment + head collision (acts like an enemy)
+        if not b.dead and self.churglyBoss and self.churglyBoss.phase == "fight" then
+            local dmg = b.damage or 0
+            local hit = require("src.churglyfight").damageNearest(self, b.x, b.y, dmg, b.size or 4)
+            if hit then
+                P:spawn(b.x, b.y, 6, b.color or {1, 0.8, 0.3}, 140, 0.25, 3)
+                if not b.pierce or b.pierce <= 0 then b.dead = true end
+            end
+        end
+        -- Small pellets are UN-shootable — player bullets pass through them.
         if b.dead then table.remove(self.bullets, i) end
         ::continuebl::
     end
@@ -640,10 +857,17 @@ function Game:update(dt)
     for _, e in ipairs(self.enemies) do if not e.optional then requiredAlive = requiredAlive + 1 end end
     local requiredPending = 0
     for _, e in ipairs(self.pendingSpawns) do if not e.optional then requiredPending = requiredPending + 1 end end
-    -- Churgly'nth's King obliteration locks the wave — no completion allowed
-    -- while He is targeting the player.
+    -- Churgly'nth's King obliteration AND the real Churgly boss fight both
+    -- lock the wave — no completion allowed while He is present.
     local oblitActive = self.player and self.player.eldritch and self.player.eldritch.kingOblit
-    if requiredAlive == 0 and requiredPending == 0 and self.bannerTime <= 0 and not oblitActive then
+    local bossActive = self.churglyBoss and self.churglyBoss.phase ~= "done"
+    local cineActive = self.ugnrakCinematic ~= nil
+    -- Also verify state is still "wave" — Churglyfight.update can flip
+    -- state to "menu" mid-frame on boss defeat, and we must not race past
+    -- that transition and trigger the card picker.
+    if self.state == "wave"
+        and requiredAlive == 0 and requiredPending == 0 and self.bannerTime <= 0
+        and not oblitActive and not bossActive and not cineActive then
         self:endWave()
     end
 end
@@ -724,6 +948,91 @@ function Game:draw()
     -- vision block ("infinite knowledge").
     if self.player and self.player.kingVisions then
         self:drawKingVisions()
+    end
+
+    -- UGNRAK BEAM render — huge crimson annihilation beam from player.
+    -- Giant mode (during cinematic): every layer doubled+, dwarfs Churgly's
+    -- king beam.
+    if self.ugnrakBeamFx then
+        local u = self.ugnrakBeamFx
+        local fade = math.min(1, u.life / u.max)
+        local pulse = 0.8 + math.sin(love.timer.getTime() * 40) * 0.2
+        local scale = u.giant and 2.2 or 1.0
+        -- Outer crimson aura
+        love.graphics.setColor(1, 0.1, 0.15, 0.5 * fade * pulse)
+        love.graphics.setLineWidth(120 * scale * pulse)
+        love.graphics.line(u.x1, u.y1, u.x2, u.y2)
+        -- Mid blood red
+        love.graphics.setColor(1, 0.25, 0.2, 0.8 * fade)
+        love.graphics.setLineWidth(70 * scale * pulse)
+        love.graphics.line(u.x1, u.y1, u.x2, u.y2)
+        -- Orange-red body
+        love.graphics.setColor(1, 0.5, 0.25, 0.95 * fade)
+        love.graphics.setLineWidth(34 * scale)
+        love.graphics.line(u.x1, u.y1, u.x2, u.y2)
+        -- White-hot core
+        love.graphics.setColor(1, 1, 0.85, fade)
+        love.graphics.setLineWidth(12 * scale)
+        love.graphics.line(u.x1, u.y1, u.x2, u.y2)
+        love.graphics.setColor(1, 1, 1, fade)
+        love.graphics.setLineWidth(4 * scale)
+        love.graphics.line(u.x1, u.y1, u.x2, u.y2)
+        -- Muzzle flare at player
+        love.graphics.setColor(1, 0.3, 0.2, 0.8 * fade)
+        love.graphics.circle("fill", u.x1, u.y1, 70 * scale * pulse)
+        love.graphics.setColor(1, 0.9, 0.5, fade)
+        love.graphics.circle("fill", u.x1, u.y1, 30 * scale)
+        love.graphics.setColor(1, 1, 1, fade)
+        love.graphics.circle("fill", u.x1, u.y1, 12 * scale)
+        -- Impact flare at target
+        if u.giant then
+            love.graphics.setColor(1, 0.3, 0.2, 0.7 * fade)
+            love.graphics.circle("fill", u.x2, u.y2, 90 * pulse)
+            love.graphics.setColor(1, 0.9, 0.5, fade)
+            love.graphics.circle("fill", u.x2, u.y2, 40)
+            love.graphics.setColor(1, 1, 1, fade)
+            love.graphics.circle("fill", u.x2, u.y2, 16)
+        end
+        love.graphics.setLineWidth(1)
+    end
+
+    -- Churgly boss fight render — giant opaque serpent with tentacles
+    if self.churglyBoss then
+        require("src.churglyfight").draw(self)
+    end
+
+    -- Reality Shard (purple crystal) — drawn below HUD, only visible when
+    -- the player is close. Spins slowly with a pulsing violet halo.
+    if self.activeShard and self.activeShard.visible then
+        local s = self.activeShard
+        local t = s.t or 0
+        local pulse = 0.75 + math.sin(t * 4) * 0.25
+        love.graphics.push()
+        love.graphics.translate(s.x, s.y)
+        love.graphics.rotate(t * 0.6)
+        -- Outer violet halo
+        for rr = 34, 14, -5 do
+            love.graphics.setColor(0.6, 0.2, 1, 0.14 * pulse * (1 - rr / 34))
+            love.graphics.circle("fill", 0, 0, rr * pulse)
+        end
+        -- Crystal diamond body
+        love.graphics.setColor(0.85, 0.5, 1, 0.95)
+        love.graphics.polygon("fill", 0, -16, 9, 0, 0, 16, -9, 0)
+        love.graphics.setColor(1, 0.85, 1, 1)
+        love.graphics.polygon("fill", 0, -9, 4, 0, 0, 9, -4, 0)
+        love.graphics.setColor(1, 1, 1, 1)
+        love.graphics.setLineWidth(2)
+        love.graphics.polygon("line", 0, -16, 9, 0, 0, 16, -9, 0)
+        love.graphics.setLineWidth(1)
+        love.graphics.pop()
+        -- Life countdown ring (last 5s flashes)
+        if s.life < 5 then
+            local flash = (math.sin(s.t * 12) > 0) and 1 or 0.3
+            love.graphics.setColor(1, 0.5, 1, 0.6 * flash)
+            love.graphics.setLineWidth(2)
+            love.graphics.circle("line", s.x, s.y, 24 + (5 - s.life) * 2)
+            love.graphics.setLineWidth(1)
+        end
     end
 
     UI:drawHUD(self)
@@ -1112,6 +1421,90 @@ function Game:skipCard()
     Audio:play("select")
 end
 
+-- UGNRAK BEAM: fires once, consumes the card. If player has 6+ Reality
+-- Shards: beam sweeps outward from the player at aim direction, instakills
+-- anything in its line, and annihilates Churgly'nth if He is present.
+-- Otherwise: backfire — ripples + fractals maxed for 12s over all menus,
+-- player dies.
+function Game:fireUgnrakBeam()
+    local p = self.player
+    p.ugnrakBeam = false -- spent either way
+    local shards
+    if self.isCustom then
+        shards = self.tempShards or 0
+    else
+        shards = (self.persist and self.persist.realityShards) or 0
+    end
+    if shards >= 6 then
+        if self.isCustom then
+            self.tempShards = shards - 6
+        else
+            self.persist.realityShards = shards - 6
+            Save.save(self.persist)
+        end
+        local eld = p.eldritch
+        local hasCinematicTarget = eld and (eld.kingOblit or eld.cthulhu)
+        if hasCinematicTarget then
+            -- CINEMATIC PATH — beam locks onto Cthulhu, explodes him with
+            -- the king explosion, then pivots to Churgly for 6s before
+            -- starting the boss fight. Fire-and-forget; the per-frame
+            -- cinematic updater manages the beam target.
+            self.ugnrakCinematic = {
+                phase = "cthulhu",
+                timer = 2.2,
+                cthulhuExploded = false,
+            }
+            if eld.kingOblit then eld.kingOblit.phase = "cinematic_freeze" end
+            p.invuln = 999
+            p.disabled = true
+            -- Seed the beam so the first-frame render points at Cthulhu
+            local ctx, cty = 640, 360
+            if eld.cthulhu then ctx, cty = eld.cthulhu.x, eld.cthulhu.y end
+            self.ugnrakBeamFx = {
+                x1 = p.x, y1 = p.y, x2 = ctx, y2 = cty,
+                life = 1.0, max = 1.0, giant = true, target = "cthulhu",
+            }
+            P:text(640, 160, "UGNRAK STRIKES", {1, 0.3, 0.3}, 4)
+        else
+            -- NORMAL PATH — straight beam in aim direction, 0.9s, kills
+            -- anything in a 90 px perpendicular corridor.
+            local ang = p.angle
+            local sx, sy = p.x, p.y
+            local ex = sx + math.cos(ang) * 2400
+            local ey = sy + math.sin(ang) * 2400
+            self.ugnrakBeamFx = {
+                x1 = sx, y1 = sy, x2 = ex, y2 = ey,
+                life = 0.9, max = 0.9, angle = ang, giant = true,
+            }
+            local dxN, dyN = math.cos(ang), math.sin(ang)
+            for _, e in ipairs(self.enemies) do
+                local ex2, ey2 = e.x - sx, e.y - sy
+                local proj = ex2 * dxN + ey2 * dyN
+                if proj > 0 then
+                    local perp = math.abs(-dyN * ex2 + dxN * ey2)
+                    if perp < 90 + (e.r or 0) then
+                        e:damage(99999, p, self)
+                    end
+                end
+            end
+        end
+        Audio:play("boss")
+        Audio:play("cthulhu")
+    else
+        -- BACKFIRE — chaos overlay for 12s, player dies
+        self.backfireHold = 12
+        self.kingFractalHold = 12
+        if p.eldritch then p.eldritch.kingFractal = 1.0 end
+        p.invuln = 0
+        p:takeDamage(99999, nil, true)
+        P:text(640, 200, "INSUFFICIENT SHARDS", {1, 0.2, 0.2}, 4)
+        P:text(640, 260, "UGNRAK CLAIMS YOU", {1, 0.3, 0.2}, 4)
+        P:spawn(p.x, p.y, 140, {1, 0.3, 0.2}, 700, 1.2, 10)
+        Audio:play("cthulhu")
+        Audio:play("glitch")
+    end
+end
+
 function Game:keypressed(key)
     -- Global debug visualiser hotkey: hold Shift + Space and tap V to enter
     -- a sprite/animation preview mode. Escape to leave.
@@ -1135,6 +1528,13 @@ function Game:keypressed(key)
     end
     if self.state == "debugsound" then
         require("src.debugsound").keypressed(self, key)
+        return
+    end
+    -- UGNRAK BEAM: press B in-wave to fire the giant crimson beam. Consumes
+    -- 6 Reality Shards. If the player doesn't have them, it backfires and
+    -- annihilates them in a storm of ripples + fractals.
+    if key == "b" and self.state == "wave" and self.player and self.player.ugnrakBeam then
+        self:fireUgnrakBeam()
         return
     end
     if self.state == "debugvis" then

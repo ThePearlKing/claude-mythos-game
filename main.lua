@@ -71,8 +71,9 @@ function love.draw()
     local lvl = Game.player and Game.player.eldritch and Game.player.eldritch.level or 0
     local inVoidsea = Game.state == "voidsea"
     local kingVis = Game.player and Game.player.kingVisions
+    local backfiring = Game.backfireHold and Game.backfireHold > 0
     local useWarp = Game.rippleShader and Game.frameCanvas
-        and ((Game.state == "wave" and lvl >= 15) or inVoidsea)
+        and ((Game.state == "wave" and lvl >= 15) or inVoidsea or backfiring)
 
     if useWarp then
         love.graphics.setCanvas(Game.frameCanvas)
@@ -119,6 +120,23 @@ function love.draw()
             strength   = strength * 0.1
             maxRadius  = maxRadius * 0.3
             globalWarp = globalWarp * 0.1
+        end
+        -- Boss fight — calm ripples so the fight reads cleanly
+        if Game.churglyBoss then
+            strength   = strength * 0.15
+            maxRadius  = maxRadius * 0.35
+            globalWarp = globalWarp * 0.1
+        end
+
+        -- Ugnrak backfire: noticeable chaos ripples on top of everything,
+        -- but not eye-searing.
+        if backfiring then
+            strength   = 1.6
+            maxRadius  = 560
+            speed      = 0.55
+            ringCount  = 4
+            globalWarp = 0.35
+            globalSpeed = 0.45
         end
 
         local sh = Game.rippleShader

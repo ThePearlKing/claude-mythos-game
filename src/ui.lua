@@ -119,6 +119,38 @@ function UI:drawHUD(game)
     love.graphics.printf(string.format("Enemies: %d", #game.enemies), 1100, 13, 170, "left")
     love.graphics.setColor(1, 1, 1, 1)
 
+    -- Ugnrak Beam prompt: as long as the player has the card AND enough
+    -- shards, flash a "PRESS B" hint at center-top. Disappears the moment
+    -- they fire (the card flag clears in fireUgnrakBeam).
+    if p.ugnrakBeam then
+        local rsCount
+        if game.isCustom then rsCount = game.tempShards or 0
+        else rsCount = (game.persist and game.persist.realityShards) or 0 end
+        if rsCount >= 6 then
+            local tt = love.timer.getTime()
+            local pulse = 0.55 + math.abs(math.sin(tt * 3)) * 0.45
+            love.graphics.setColor(1, 0.2, 0.2, pulse)
+            love.graphics.setFont(self.bigFont or self.font)
+            love.graphics.printf("PRESS B — UGNRAK BEAM READY", 0, 48, 1280, "center")
+            love.graphics.setFont(self.font)
+        end
+    end
+
+    -- Reality Shards counter (no maximum shown — purpose is a mystery).
+    -- Custom mode reads from the ephemeral run-local counter instead.
+    local rs
+    if game.isCustom then
+        rs = game.tempShards or 0
+    else
+        rs = (game.persist and game.persist.realityShards) or 0
+    end
+    if rs > 0 or game.activeShard or game.pendingShardWave then
+        local tt = love.timer.getTime()
+        love.graphics.setColor(0.8, 0.5, 1, 0.9 + math.sin(tt * 2) * 0.1)
+        love.graphics.printf(string.format("Shards: %d%s", rs, game.isCustom and " (custom)" or ""),
+            1100, 44, 170, "left")
+    end
+
     -- Forbidden Tally: glitched eldritch counter in the HUD when the card is active.
     if p.eldritchCounterUnlocked then
         local lvl = (p.eldritch and p.eldritch.level) or 0
@@ -494,6 +526,11 @@ function UI:drawMenu(game)
     love.graphics.printf(string.format("Win Streak: %d  (best: %d)", p.winStreak or 0, p.bestStreak or 0), 20, 48, 400, "left")
     love.graphics.setColor(0.8, 0.8, 0.8)
     love.graphics.printf(string.format("Wins: %d    Runs: %d", p.totalWins or 0, p.totalRuns or 0), 20, 72, 400, "left")
+    -- Churgly'nth defeat counter (only surfaced once at least one kill)
+    if (p.churglyDefeats or 0) > 0 then
+        love.graphics.setColor(0.85, 0.4, 1)
+        love.graphics.printf(string.format("Churgly'nth slain: %d", p.churglyDefeats), 20, 96, 400, "left")
+    end
 end
 
 -- ====== CUSTOM MODE SETUP ======
@@ -1786,6 +1823,58 @@ local function drawTrailPreview(x, y, scale, trail, t)
             local alpha = 0.3 + 0.25 * math.sin(t * 2 + i * 0.7)
             love.graphics.setColor(0.4, 0.1, 0.6, alpha)
             love.graphics.circle("fill", sx, sy, 2.5)
+        end
+    elseif trail == "ugnrak" then
+        local serpents = 3
+        for s = 1, serpents do
+            local speed = 1.2 + s * 0.3
+            local radius = 28 + s * 8
+            local segs = 18
+            local baseOff = t * speed + (s * math.pi * 2 / serpents)
+            local pts = {}
+            local spikeCenters = {}
+            for i = 1, segs do
+                local segAng = baseOff - i * 0.14
+                local r = radius + math.sin(t * 2 + i + s) * 3
+                local cx = math.cos(segAng) * r
+                local cy = math.sin(segAng) * r
+                pts[#pts + 1] = cx; pts[#pts + 1] = cy
+                if i % 3 == 0 then
+                    spikeCenters[#spikeCenters + 1] = {x = cx, y = cy, ang = segAng, iFrac = i / segs}
+                end
+            end
+            for _, sc in ipairs(spikeCenters) do
+                local tanX = -math.sin(sc.ang); local tanY = math.cos(sc.ang)
+                local perpX = math.cos(sc.ang); local perpY = math.sin(sc.ang)
+                local baseW = (1 - sc.iFrac) * 3 + 1.5
+                local spikeLen = baseW + 5
+                for side = -1, 1, 2 do
+                    love.graphics.setColor(0.75, 0.08, 0.1)
+                    love.graphics.polygon("fill",
+                        sc.x + tanX * baseW, sc.y + tanY * baseW,
+                        sc.x - tanX * baseW, sc.y - tanY * baseW,
+                        sc.x + perpX * side * spikeLen,
+                        sc.y + perpY * side * spikeLen)
+                end
+            end
+            love.graphics.setColor(0.35, 0.02, 0.02)
+            love.graphics.setLineWidth(7); love.graphics.line(pts)
+            love.graphics.setColor(0.72, 0.1, 0.12)
+            love.graphics.setLineWidth(5); love.graphics.line(pts)
+            love.graphics.setColor(0.9, 0.2, 0.2)
+            love.graphics.setLineWidth(2); love.graphics.line(pts)
+            love.graphics.setLineWidth(1)
+            local hx, hy = pts[1], pts[2]
+            love.graphics.setColor(0.8, 0.12, 0.14)
+            love.graphics.circle("fill", hx, hy, 6)
+            love.graphics.setColor(1, 0.2, 0.2)
+            love.graphics.circle("line", hx, hy, 6)
+            for d = 1, 24 do
+                local fa = (d / 24) * math.pi * 2 + t * 0.7
+                local fr = 4.5 * (0.35 + (d % 5) * 0.12)
+                love.graphics.setColor(0.067, 0, 0)
+                love.graphics.circle("fill", hx + math.cos(fa) * fr, hy + math.sin(fa) * fr, 0.7)
+            end
         end
     elseif trail == "wake" then
         for i = 1, 12 do

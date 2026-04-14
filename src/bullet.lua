@@ -165,6 +165,49 @@ function Bullet:onHit(target, game)
 end
 
 function Bullet:draw()
+    if self.churglyBigAttack then
+        -- Cracked orb — dark shell with 4 bright fracture lines leaking
+        -- yellow-white light from the core. Pulses to signal "shoot me".
+        local t = love.timer.getTime()
+        local pulse = 0.75 + 0.25 * math.sin(t * 6)
+        -- Outer purple halo (telegraph)
+        love.graphics.setColor(self.color[1], self.color[2], self.color[3], 0.4 * pulse)
+        love.graphics.circle("fill", self.x, self.y, self.size * 1.6)
+        -- Shell
+        love.graphics.setColor(0.22, 0.02, 0.35)
+        love.graphics.circle("fill", self.x, self.y, self.size)
+        love.graphics.setColor(self.color[1], self.color[2], self.color[3])
+        love.graphics.setLineWidth(2)
+        love.graphics.circle("line", self.x, self.y, self.size)
+        -- Bright fracture cracks radiating from center (leaking light)
+        love.graphics.setColor(1, 1, 0.6, 0.9 * pulse)
+        love.graphics.setLineWidth(2.5)
+        for i = 0, 3 do
+            local a = (i / 4) * math.pi * 2 + t * 0.4
+            local r1 = self.size * 0.15
+            local r2 = self.size * 1.05
+            love.graphics.line(
+                self.x + math.cos(a) * r1, self.y + math.sin(a) * r1,
+                self.x + math.cos(a) * r2, self.y + math.sin(a) * r2)
+        end
+        -- Secondary thinner cracks
+        love.graphics.setColor(1, 0.95, 0.4, 0.6 * pulse)
+        love.graphics.setLineWidth(1)
+        for i = 0, 3 do
+            local a = (i / 4) * math.pi * 2 + math.pi / 4 + t * 0.4
+            love.graphics.line(
+                self.x + math.cos(a) * self.size * 0.2,
+                self.y + math.sin(a) * self.size * 0.2,
+                self.x + math.cos(a) * self.size * 0.85,
+                self.y + math.sin(a) * self.size * 0.85)
+        end
+        -- Hot white core
+        love.graphics.setColor(1, 1, 0.9, pulse)
+        love.graphics.circle("fill", self.x, self.y, self.size * 0.25 * pulse)
+        love.graphics.setLineWidth(1)
+        love.graphics.setColor(1, 1, 1, 1)
+        return
+    end
     love.graphics.setColor(self.color[1], self.color[2], self.color[3])
     love.graphics.circle("fill", self.x, self.y, self.size)
     love.graphics.setColor(1, 1, 1, 0.5)
