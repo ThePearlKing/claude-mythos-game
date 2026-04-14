@@ -145,6 +145,9 @@ function Game:resetGame()
     self.waveEnemiesKilled = 0
     self.waveScoreStart = 0
     self.finalStatsRecorded = false
+    self._shardCollectedThisRun = false
+    self.activeShard = nil
+    self.pendingShardWave = nil
     P:clear()
 end
 
@@ -271,18 +274,37 @@ function Game:beginWave(w)
         e.spawnDelay = e.spawnDelay or 0
         table.insert(self.pendingSpawns, e)
     end
-    -- Reality Shard: if one is scheduled for this wave, plant it at a
-    -- random position (hidden until the player gets close).
-    local shardThisWave = (self.pendingShardWave == w)
-    if shardThisWave then
-        self.activeShard = {
-            x = math.random(120, 1160),
-            y = math.random(120, 600),
-            life = 30,
-            t = 0,
-            visible = false,
-        }
-        self.pendingShardWave = nil
+    -- Reality Shard (deterministic, one-per-run, non-chain):
+    --   * shardIdx = persist.realityShards + 1 — which shard we're after
+    --   * wave + (x, y) are fully determined by save-slot + shardIdx so
+    --     the shard plants at the same spot every run until collected
+    --   * To spawn: player must have reached the threshold for shardIdx,
+    --     must be ON that wave, must not have collected a shard this run,
+    --     and total collected must be < 6
+    --   * Custom runs skip shards entirely (ephemeral)
+    local Eldritch = require("src.eldritch")
+    local Save = require("src.save")
+    local function hashRand(seed, idx)
+        local v = math.sin(seed * 12.9898 + idx * 78.233) * 43758.5453
+        return v - math.floor(v)
+    end
+    local shardThisWave = false
+    if not self.isCustom then
+        local thrs = Eldritch.SHARD_THRESHOLDS
+        local shardIdx = (self.persist.realityShards or 0) + 1
+        if shardIdx <= #thrs and not self._shardCollectedThisRun then
+            local required = thrs[shardIdx]
+            local slot = Save.getActiveSlot()
+            local seed = slot * 9973 + shardIdx * 311
+            local shardWave = math.floor(hashRand(seed, 1) * 20) + 1
+            local shardX = 120 + hashRand(seed, 2) * 1040
+            local shardY = 120 + hashRand(seed, 3) * 480
+            local levelOK = (self.player.eldritch.level or 0) >= required
+            if levelOK and w == shardWave then
+                self.activeShard = {x = shardX, y = shardY, life = 30, t = 0, visible = false}
+                shardThisWave = true
+            end
+        end
     end
 
     local msg = isBoss and "The final enemy approaches..." or (#enemies .. " threats incoming")
@@ -681,6 +703,8 @@ function Game:update(dt)
             else
                 self.persist.realityShards = (self.persist.realityShards or 0) + 1
                 Save.save(self.persist)
+                -- Lock out further shard spawns for the rest of this run.
+                self._shardCollectedThisRun = true
             end
             P:spawn(s.x, s.y, 80, {0.8, 0.4, 1}, 480, 1.2, 10)
             P:spawn(s.x, s.y, 50, {1, 0.85, 1}, 360, 0.9, 8)

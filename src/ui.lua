@@ -783,6 +783,16 @@ function UI:drawOptions(game)
     game.optionsSlotsBounds      = btn(startX + (bw + gap) * 2,          rowY, bw, bh, "SAVE SLOTS",   {0.25, 0.55, 0.32})
     game.optionsResetDataBounds  = btn(startX + (bw + gap) * 3,          rowY, bw, bh, "RESET DATA",   {0.55, 0.18, 0.18})
 
+    -- Second-row actions: shard reset (purple, only appears if you've got any)
+    local row2Y = rowY + bh + 28
+    if (game.persist.realityShards or 0) > 0 then
+        game.optionsResetShardsBounds = btn(
+            startX + (bw + gap) * 3, row2Y, bw, bh,
+            "RESET SHARDS", {0.45, 0.18, 0.7})
+    else
+        game.optionsResetShardsBounds = nil
+    end
+
     -- Active save slot label
     local Save = require("src.save")
     love.graphics.setColor(0.8, 0.9, 0.85, 0.7)
@@ -832,6 +842,14 @@ function UI:optionsClick(game, x, y)
     b = game.optionsResetDataBounds
     if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
         game:openResetData()
+        return
+    end
+    b = game.optionsResetShardsBounds
+    if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
+        game.persist.realityShards = 0
+        require("src.save").save(game.persist)
+        Audio:play("select")
+        Audio:play("whisper")
         return
     end
     b = game.optionsBackBounds

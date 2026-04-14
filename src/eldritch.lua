@@ -97,32 +97,9 @@ function Eldritch.gainLevel(player, n)
     local oldLevel = player.eldritch.level
     player.eldritch.level = math.min(Eldritch.MAX_DISPLAY + 4, player.eldritch.level + n)
 
-    -- REALITY SHARDS: each threshold triggers ONCE per run, only on the
-    -- specific act of CROSSING it (level going from below to above). No
-    -- chain-unlock on collection — to get another shard at threshold N,
-    -- you'd need the level to drop below N and come back up.
-    -- Custom mode is exempt: shards only naturally spawn in normal runs.
-    local thrs = Eldritch.SHARD_THRESHOLDS
-    player.eldritch.shardThresholdsHit = player.eldritch.shardThresholdsHit or {}
-    local game = player.game
-    if game and not game.isCustom then
-      for _, thr in ipairs(thrs) do
-        if player.eldritch.level >= thr
-            and oldLevel < thr
-            and not player.eldritch.shardThresholdsHit[thr]
-            and game
-            and not game.activeShard
-            and not game.pendingShardWave
-        then
-            player.eldritch.shardThresholdsHit[thr] = true
-            local cur = game.wave or 1
-            local hi = math.min(20, math.max(cur + 1, cur + 8))
-            local lo = math.max(1, cur)
-            if hi < lo then hi = lo end
-            game.pendingShardWave = math.random(lo, hi)
-        end
-      end
-    end
+    -- (Reality Shard spawning is NOT triggered here anymore. See
+    -- Game:beginWave — shards are deterministic per save slot + shard
+    -- index, with the threshold check gated by persist.realityShards.)
     -- exponential scaling: each level multiplies card weight for eldritch
     player.eldritch.cardMult = 1.0 + (player.eldritch.level ^ 1.5) * 0.35
     -- First eldritch of the run — 50% chance Churgly'nth briefly glimpses at you.
