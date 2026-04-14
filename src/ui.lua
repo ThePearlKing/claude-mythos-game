@@ -526,10 +526,10 @@ function UI:drawMenu(game)
     love.graphics.printf(string.format("Win Streak: %d  (best: %d)", p.winStreak or 0, p.bestStreak or 0), 20, 48, 400, "left")
     love.graphics.setColor(0.8, 0.8, 0.8)
     love.graphics.printf(string.format("Wins: %d    Runs: %d", p.totalWins or 0, p.totalRuns or 0), 20, 72, 400, "left")
-    -- Churgly'nth defeat counter (only surfaced once at least one kill)
-    if (p.churglyDefeats or 0) > 0 then
+    -- Reality Shards counter (surfaces once you've collected at least one)
+    if (p.realityShards or 0) > 0 then
         love.graphics.setColor(0.85, 0.4, 1)
-        love.graphics.printf(string.format("Churgly'nth slain: %d", p.churglyDefeats), 20, 96, 400, "left")
+        love.graphics.printf(string.format("Reality Shards: %d", p.realityShards), 20, 96, 400, "left")
     end
 end
 
@@ -687,102 +687,122 @@ function UI:drawOptions(game)
     love.graphics.clear(0.05, 0.06, 0.14)
     love.graphics.setFont(self.titleFont)
     love.graphics.setColor(0.4, 0.8, 1)
-    love.graphics.printf("OPTIONS", 0, 60, 1280, "center")
+    love.graphics.printf("OPTIONS", 0, 30, 1280, "center")
     love.graphics.setFont(self.font)
-    love.graphics.setColor(1, 1, 1, 0.8)
-    love.graphics.printf("Click + / - to adjust. ENTER or ESC to save and go back.", 0, 160, 1280, "center")
+    love.graphics.setColor(1, 1, 1, 0.65)
+    love.graphics.printf("Click + / - to adjust. ENTER or ESC to save and go back.", 0, 110, 1280, "center")
 
     local mx, my = love.mouse.getPosition()
     game.optionsClicks = {}
-    local y0 = 220
 
+    -- ============================================================
+    -- LEFT COLUMN: Volume sliders (compact stack)
+    -- ============================================================
+    local volX, volY, volW, volH = 60, 160, 580, 60
+    love.graphics.setColor(0.08, 0.12, 0.22, 0.85)
+    love.graphics.rectangle("fill", volX - 12, volY - 26, volW + 24, volH * 3 + 38, 12, 12)
+    love.graphics.setColor(0.4, 0.8, 1, 0.9)
+    love.graphics.setFont(self.bigFont or self.font)
+    love.graphics.printf("AUDIO", volX, volY - 22, volW, "left")
+    love.graphics.setFont(self.font)
     for i, row in ipairs(optionsRows) do
-        local y = y0 + (i - 1) * 70
-        love.graphics.setColor(0.1, 0.15, 0.25, 0.9)
-        love.graphics.rectangle("fill", 340, y, 600, 54, 8, 8)
+        local y = volY + (i - 1) * volH
+        love.graphics.setColor(0.12, 0.18, 0.3, 0.9)
+        love.graphics.rectangle("fill", volX, y, volW, volH - 8, 8, 8)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.printf(row.label, 360, y + 16, 260, "left")
+        love.graphics.printf(row.label, volX + 14, y + 17, 180, "left")
 
         local val = game.persist[row.key] or 1.0
         if val < 0 then val = 0 end
         if val > 1 then val = 1 end
 
         -- minus
-        local bx1 = 640
-        local minusH = mx >= bx1 and mx <= bx1 + 36 and my >= y + 12 and my <= y + 42
+        local bx1 = volX + 210
+        local minusH = mx >= bx1 and mx <= bx1 + 32 and my >= y + 14 and my <= y + 40
         love.graphics.setColor(minusH and 1 or 0.4, 0.2, 0.3)
-        love.graphics.rectangle("fill", bx1, y + 12, 36, 30, 6, 6)
+        love.graphics.rectangle("fill", bx1, y + 14, 32, 26, 6, 6)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.printf("-", bx1, y + 17, 36, "center")
-
-        -- meter bar
+        love.graphics.printf("-", bx1, y + 17, 32, "center")
+        -- bar
         love.graphics.setColor(0.15, 0.2, 0.3)
-        love.graphics.rectangle("fill", bx1 + 44, y + 19, 160, 16, 4, 4)
+        love.graphics.rectangle("fill", bx1 + 40, y + 18, 220, 18, 4, 4)
         love.graphics.setColor(0.4, 0.8, 1)
-        love.graphics.rectangle("fill", bx1 + 44, y + 19, 160 * val, 16, 4, 4)
+        love.graphics.rectangle("fill", bx1 + 40, y + 18, 220 * val, 18, 4, 4)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.printf(string.format("%d%%", math.floor(val * 100 + 0.5)), bx1 + 44, y + 19, 160, "center")
-
+        love.graphics.printf(string.format("%d%%", math.floor(val * 100 + 0.5)), bx1 + 40, y + 19, 220, "center")
         -- plus
-        local bx2 = bx1 + 212
-        local plusH = mx >= bx2 and mx <= bx2 + 36 and my >= y + 12 and my <= y + 42
+        local bx2 = bx1 + 270
+        local plusH = mx >= bx2 and mx <= bx2 + 32 and my >= y + 14 and my <= y + 40
         love.graphics.setColor(0.2, plusH and 1 or 0.4, 0.3)
-        love.graphics.rectangle("fill", bx2, y + 12, 36, 30, 6, 6)
+        love.graphics.rectangle("fill", bx2, y + 14, 32, 26, 6, 6)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.printf("+", bx2, y + 17, 36, "center")
-
-        game.optionsClicks[#game.optionsClicks + 1] = {x = bx1, y = y + 12, w = 36, h = 30, key = row.key, dir = -1}
-        game.optionsClicks[#game.optionsClicks + 1] = {x = bx2, y = y + 12, w = 36, h = 30, key = row.key, dir = 1}
+        love.graphics.printf("+", bx2, y + 17, 32, "center")
+        game.optionsClicks[#game.optionsClicks + 1] = {x = bx1, y = y + 14, w = 32, h = 26, key = row.key, dir = -1}
+        game.optionsClicks[#game.optionsClicks + 1] = {x = bx2, y = y + 14, w = 32, h = 26, key = row.key, dir = 1}
     end
 
-    -- Sub-screen buttons
-    local plH = mx >= 180 and mx <= 380 and my >= 500 and my <= 550
-    love.graphics.setColor(plH and 1 or 0.4, plH and 0.5 or 0.25, 0.8)
-    love.graphics.rectangle("fill", 180, 500, 200, 50, 10, 10)
+    -- ============================================================
+    -- RIGHT COLUMN: Aim Mode toggle (tall, prominent)
+    -- ============================================================
+    local aimMode = (game.persist.aimMode or 0) == 1
+    local amX, amY, amW, amH = 700, 134, 520, 196
+    local amHover = mx >= amX and mx <= amX + amW and my >= amY and my <= amY + amH
+    love.graphics.setColor(0.08, 0.12, 0.22, 0.85)
+    love.graphics.rectangle("fill", amX - 12, amY - 26, amW + 24, amH + 38, 12, 12)
+    love.graphics.setColor(0.4, 0.8, 1, 0.9)
+    love.graphics.setFont(self.bigFont or self.font)
+    love.graphics.printf("CONTROLS", amX, amY - 22, amW, "left")
+    love.graphics.setFont(self.font)
+    love.graphics.setColor(aimMode and 0.4 or 0.2, aimMode and 0.7 or 0.4, aimMode and 0.95 or 0.6,
+        amHover and 1 or 0.92)
+    love.graphics.rectangle("fill", amX, amY, amW, 70, 10, 10)
     love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("line", 180, 500, 200, 50, 10, 10)
-    love.graphics.printf("PLAYLIST", 180, 515, 200, "center")
-    game.optionsPlaylistBounds = {180, 500, 200, 50}
+    love.graphics.rectangle("line", amX, amY, amW, 70, 10, 10)
+    love.graphics.setFont(self.bigFont or self.font)
+    love.graphics.printf("AIM MODE", amX, amY + 8, amW, "center")
+    love.graphics.setFont(self.font)
+    love.graphics.printf(aimMode and "DIRECTION (mouse locked)" or "POSITION (mouse pointer)",
+        amX, amY + 44, amW, "center")
+    game.optionsAimBounds = {amX, amY, amW, 70}
+    -- Description below the button
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.printf(
+        aimMode and "Mouse is captured. Aim follows the last direction you moved."
+                 or "Aim follows mouse pointer position (default).",
+        amX + 12, amY + 90, amW - 24, "left")
 
-    local aeH = mx >= 400 and mx <= 600 and my >= 500 and my <= 550
-    love.graphics.setColor(aeH and 1 or 0.3, aeH and 0.7 or 0.4, 0.9)
-    love.graphics.rectangle("fill", 400, 500, 200, 50, 10, 10)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("line", 400, 500, 200, 50, 10, 10)
-    love.graphics.printf("AESTHETICS", 400, 515, 200, "center")
-    game.optionsAestheticsBounds = {400, 500, 200, 50}
+    -- ============================================================
+    -- BOTTOM ROW: sub-screen buttons in a tidy line of 4 + back
+    -- ============================================================
+    local function btn(x, y, w, h, label, hoverCol)
+        local hover = mx >= x and mx <= x + w and my >= y and my <= y + h
+        local r, g, b = hoverCol[1], hoverCol[2], hoverCol[3]
+        love.graphics.setColor(hover and r * 1.4 or r, hover and g * 1.4 or g, hover and b * 1.4 or b)
+        love.graphics.rectangle("fill", x, y, w, h, 10, 10)
+        love.graphics.setColor(1, 1, 1, 0.85)
+        love.graphics.rectangle("line", x, y, w, h, 10, 10)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.printf(label, x, y + (h - 16) / 2, w, "center")
+        return {x, y, w, h}
+    end
 
-    -- SAVE SLOTS (second row, above danger)
-    local slH = mx >= 180 and mx <= 380 and my >= 430 and my <= 480
-    love.graphics.setColor(slH and 1 or 0.25, slH and 0.75 or 0.5, slH and 0.4 or 0.3)
-    love.graphics.rectangle("fill", 180, 430, 200, 50, 10, 10)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("line", 180, 430, 200, 50, 10, 10)
-    love.graphics.printf("SAVE SLOTS", 180, 445, 200, "center")
-    game.optionsSlotsBounds = {180, 430, 200, 50}
+    local bw, bh = 230, 56
+    local rowY = 470
+    local gap = 16
+    local startX = (1280 - (bw * 4 + gap * 3)) / 2
+    game.optionsPlaylistBounds   = btn(startX,                           rowY, bw, bh, "PLAYLIST",     {0.32, 0.22, 0.6})
+    game.optionsAestheticsBounds = btn(startX + (bw + gap),              rowY, bw, bh, "AESTHETICS",   {0.25, 0.5, 0.7})
+    game.optionsSlotsBounds      = btn(startX + (bw + gap) * 2,          rowY, bw, bh, "SAVE SLOTS",   {0.25, 0.55, 0.32})
+    game.optionsResetDataBounds  = btn(startX + (bw + gap) * 3,          rowY, bw, bh, "RESET DATA",   {0.55, 0.18, 0.18})
 
-    -- Tiny current-slot label next to the button
+    -- Active save slot label
     local Save = require("src.save")
-    love.graphics.setColor(0.8, 0.9, 0.85, 0.85)
-    love.graphics.printf("(Slot " .. Save.getActiveSlot() .. ")", 395, 447, 180, "left")
+    love.graphics.setColor(0.8, 0.9, 0.85, 0.7)
+    love.graphics.printf("Slot " .. Save.getActiveSlot() .. " active",
+        startX + (bw + gap) * 2, rowY + bh + 6, bw, "center")
 
-    -- DANGER: Reset game data
-    local rsH = mx >= 620 and mx <= 880 and my >= 500 and my <= 550
-    love.graphics.setColor(rsH and 1 or 0.6, 0.15, 0.15)
-    love.graphics.rectangle("fill", 620, 500, 260, 50, 10, 10)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("line", 620, 500, 260, 50, 10, 10)
-    love.graphics.printf("RESET GAME DATA", 620, 515, 260, "center")
-    game.optionsResetDataBounds = {620, 500, 260, 50}
-
-    -- Back
-    local backH = mx >= 900 and mx <= 1100 and my >= 500 and my <= 550
-    love.graphics.setColor(backH and 1 or 0.5, 0.6, 0.8)
-    love.graphics.rectangle("fill", 900, 500, 200, 50, 10, 10)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("line", 900, 500, 200, 50, 10, 10)
-    love.graphics.printf("BACK", 900, 515, 200, "center")
-    game.optionsBackBounds = {900, 500, 200, 50}
+    -- BACK button — bottom right corner
+    game.optionsBackBounds = btn(1080, 640, 170, 50, "BACK", {0.4, 0.5, 0.7})
 end
 
 function UI:optionsClick(game, x, y)
@@ -799,7 +819,14 @@ function UI:optionsClick(game, x, y)
             return
         end
     end
-    local b = game.optionsPlaylistBounds
+    local b = game.optionsAimBounds
+    if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
+        game.persist.aimMode = ((game.persist.aimMode or 0) == 1) and 0 or 1
+        require("src.save").save(game.persist)
+        Audio:play("select")
+        return
+    end
+    b = game.optionsPlaylistBounds
     if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
         game.state = "playlist"
         return
@@ -1259,26 +1286,40 @@ local function drawGunAt(x, y, scale, gun, t)
     love.graphics.push()
     love.graphics.translate(x, y)
     love.graphics.scale(scale, scale)
+    love.graphics.setLineWidth(1)  -- reset so upstream thickness doesn't leak in
     local baseX = 0
     if gun == "pistol" then
-        love.graphics.setColor(0.2, 0.2, 0.25); love.graphics.rectangle("fill", baseX, -3, 22, 6)
-        love.graphics.setColor(0.4, 0.4, 0.5); love.graphics.rectangle("line", baseX, -3, 22, 6)
-        love.graphics.rectangle("fill", baseX + 19, -5, 2, 2)
-    elseif gun == "compact" then
-        love.graphics.setColor(0.22, 0.22, 0.26); love.graphics.rectangle("fill", baseX, -3, 17, 6)
-        love.graphics.setColor(0.4, 0.4, 0.48); love.graphics.rectangle("line", baseX, -3, 17, 6)
-        love.graphics.setColor(0.12, 0.12, 0.15); love.graphics.rectangle("fill", baseX + 1, -4, 15, 2)
+        love.graphics.setColor(0.22, 0.22, 0.26); love.graphics.rectangle("fill", baseX, -3, 22, 6)
+        love.graphics.setColor(0.4, 0.4, 0.48); love.graphics.rectangle("line", baseX, -3, 22, 6)
+        love.graphics.setColor(0.12, 0.12, 0.15); love.graphics.rectangle("fill", baseX + 1, -4, 20, 2)
         love.graphics.setColor(0.5, 0.5, 0.55)
-        for i = 0, 4 do love.graphics.line(baseX + 11 + i * 0.8, -4, baseX + 10 + i * 0.8, -2) end
+        for i = 0, 5 do love.graphics.line(baseX + 14 + i * 0.9, -4, baseX + 13 + i * 0.9, -2) end
         love.graphics.setColor(0.3, 0.3, 0.35)
-        love.graphics.rectangle("fill", baseX + 2, -5, 2, 1); love.graphics.rectangle("fill", baseX + 14, -5, 1.5, 1)
-        love.graphics.setColor(1, 1, 1); love.graphics.rectangle("fill", baseX + 14.5, -4.5, 0.6, 0.5)
+        love.graphics.rectangle("fill", baseX + 2, -5, 2, 1)
+        love.graphics.rectangle("fill", baseX + 18, -5, 2, 1)
+        love.graphics.setColor(1, 1, 1); love.graphics.rectangle("fill", baseX + 18.5, -4.5, 0.8, 0.5)
         love.graphics.setColor(0.25, 0.25, 0.3); love.graphics.setLineWidth(1.5)
-        love.graphics.arc("line", "open", baseX + 6, 4, 2, 0, math.pi); love.graphics.setLineWidth(1)
-        love.graphics.setColor(0.05, 0.05, 0.08); love.graphics.rectangle("fill", baseX + 8, -2, 3, 1)
+        love.graphics.arc("line", "open", baseX + 7, 4, 2.5, 0, math.pi); love.graphics.setLineWidth(1)
+        love.graphics.setColor(0.05, 0.05, 0.08); love.graphics.rectangle("fill", baseX + 10, -2, 4, 1)
         love.graphics.setColor(0.08, 0.08, 0.1)
-        for i = 0, 2 do love.graphics.rectangle("fill", baseX + 1, -1 + i * 1.3, 4, 0.5) end
-        love.graphics.setColor(0, 0, 0); love.graphics.circle("fill", baseX + 17, 0, 1)
+        for i = 0, 2 do love.graphics.rectangle("fill", baseX + 1, -1 + i * 1.3, 5, 0.5) end
+        love.graphics.setColor(0, 0, 0); love.graphics.circle("fill", baseX + 22, 0, 1.2)
+    elseif gun == "compact" then
+        love.graphics.setColor(0.22, 0.22, 0.26); love.graphics.rectangle("fill", baseX, -2.5, 14, 5)
+        love.graphics.setColor(0.4, 0.4, 0.48); love.graphics.rectangle("line", baseX, -2.5, 14, 5)
+        love.graphics.setColor(0.12, 0.12, 0.15); love.graphics.rectangle("fill", baseX + 1, -3.3, 12, 1.6)
+        love.graphics.setColor(0.5, 0.5, 0.55)
+        for i = 0, 3 do love.graphics.line(baseX + 9 + i * 0.8, -3.3, baseX + 8 + i * 0.8, -1.7) end
+        love.graphics.setColor(0.3, 0.3, 0.35)
+        love.graphics.rectangle("fill", baseX + 1.5, -4.1, 1.6, 0.9)
+        love.graphics.rectangle("fill", baseX + 11, -4.1, 1.2, 0.9)
+        love.graphics.setColor(1, 1, 1); love.graphics.rectangle("fill", baseX + 11.4, -3.7, 0.5, 0.4)
+        love.graphics.setColor(0.25, 0.25, 0.3); love.graphics.setLineWidth(1.3)
+        love.graphics.arc("line", "open", baseX + 5, 3, 1.8, 0, math.pi); love.graphics.setLineWidth(1)
+        love.graphics.setColor(0.05, 0.05, 0.08); love.graphics.rectangle("fill", baseX + 6, -1.8, 2.5, 0.9)
+        love.graphics.setColor(0.08, 0.08, 0.1)
+        for i = 0, 1 do love.graphics.rectangle("fill", baseX + 1, -0.8 + i * 1.2, 3.5, 0.45) end
+        love.graphics.setColor(0, 0, 0); love.graphics.circle("fill", baseX + 14, 0, 1)
     elseif gun == "magnum" then
         love.graphics.setColor(0.22, 0.2, 0.25); love.graphics.rectangle("fill", baseX + 8, -2.5, 18, 5)
         love.graphics.setColor(0.35, 0.3, 0.38); love.graphics.circle("fill", baseX + 5, 0, 6)
@@ -1745,30 +1786,63 @@ local function drawGunAt(x, y, scale, gun, t)
             love.graphics.line(sx - 1.5, sy, sx + 1.5, sy); love.graphics.line(sx, sy - 1.5, sx, sy + 1.5)
         end
     elseif gun == "scythe" then
-        love.graphics.setColor(0.35, 0.22, 0.1); love.graphics.setLineWidth(3)
-        love.graphics.line(baseX - 4, 0, baseX + 40, 0)
-        love.graphics.setColor(0.5, 0.32, 0.15); love.graphics.setLineWidth(1)
-        love.graphics.line(baseX - 4, -1, baseX + 40, -1)
-        love.graphics.setColor(0.12, 0.08, 0.05)
-        for _, x in ipairs({baseX + 4, baseX + 20, baseX + 36}) do
-            love.graphics.rectangle("fill", x, -2, 2, 4)
-        end
-        love.graphics.setColor(0.08, 0.06, 0.12)
-        love.graphics.polygon("fill",
-            baseX + 36, 0, baseX + 42, -8, baseX + 52, -16,
-            baseX + 58, -14, baseX + 52, -6, baseX + 44, 2)
-        love.graphics.setColor(0.3, 1, 0.5, 0.9 + math.sin(t * 4) * 0.1)
-        love.graphics.setLineWidth(2)
-        love.graphics.line(baseX + 38, 0, baseX + 44, -8, baseX + 52, -14, baseX + 56, -13)
+        -- Proper reaper scythe: long snath, grip wraps, metal collar, big
+        -- curved crescent blade (outer body + inner hook), steel spine
+        -- highlight, glowing green inner edge, rune, drip wisps.
+        love.graphics.setColor(0.35, 0.22, 0.1); love.graphics.setLineWidth(4)
+        love.graphics.line(baseX - 4, 0, baseX + 50, 0)
+        love.graphics.setColor(0.55, 0.36, 0.16); love.graphics.setLineWidth(1.5)
+        love.graphics.line(baseX - 4, -1.2, baseX + 50, -1.2)
         love.graphics.setLineWidth(1)
+        for _, wx in ipairs({baseX + 4, baseX + 22, baseX + 40}) do
+            love.graphics.setColor(0.1, 0.06, 0.04)
+            love.graphics.rectangle("fill", wx, -2.5, 3, 5)
+            love.graphics.setColor(0.85, 0.65, 0.2)
+            love.graphics.line(wx + 1, -2.5, wx + 1, 2.5)
+        end
+        love.graphics.setColor(0.3, 0.3, 0.36); love.graphics.rectangle("fill", baseX + 46, -3.5, 7, 7)
+        love.graphics.setColor(0.6, 0.6, 0.7); love.graphics.rectangle("line", baseX + 46, -3.5, 7, 7)
+        love.graphics.setColor(0.1, 0.08, 0.12); love.graphics.line(baseX + 49, -3.5, baseX + 49, 3.5)
+        -- Blade outer body
+        love.graphics.setColor(0.14, 0.1, 0.18)
+        love.graphics.polygon("fill",
+            baseX + 53, -2, baseX + 56, -12, baseX + 64, -22,
+            baseX + 78, -28, baseX + 94, -26, baseX + 100, -18,
+            baseX + 96, -10, baseX + 82, -12, baseX + 66, -10, baseX + 54, -4)
+        -- Inner hook
+        love.graphics.polygon("fill",
+            baseX + 54, -4, baseX + 66, -10, baseX + 82, -12, baseX + 96, -10,
+            baseX + 96, -6, baseX + 82, -6, baseX + 66, -4, baseX + 54, 0)
+        love.graphics.setColor(0.04, 0.02, 0.08); love.graphics.setLineWidth(1.5)
+        love.graphics.line(
+            baseX + 53, -2, baseX + 56, -12, baseX + 64, -22,
+            baseX + 78, -28, baseX + 94, -26, baseX + 100, -18,
+            baseX + 96, -10, baseX + 96, -6)
+        love.graphics.line(baseX + 96, -6, baseX + 82, -6, baseX + 66, -4, baseX + 54, 0)
+        love.graphics.setColor(0.42, 0.38, 0.48); love.graphics.setLineWidth(1.5)
+        love.graphics.line(baseX + 58, -14, baseX + 68, -22, baseX + 82, -26, baseX + 94, -24, baseX + 98, -18)
+        -- Glowing green cutting edge
+        local glow = 0.8 + math.sin(t * 5) * 0.2
+        love.graphics.setColor(0.3, 1, 0.5, glow); love.graphics.setLineWidth(2.2)
+        love.graphics.line(baseX + 54, -4, baseX + 66, -8, baseX + 80, -10, baseX + 94, -8, baseX + 96, -6)
+        love.graphics.setColor(1, 1, 0.9, glow * 0.8); love.graphics.setLineWidth(1)
+        love.graphics.line(baseX + 54, -4, baseX + 66, -8, baseX + 80, -10, baseX + 94, -8)
+        -- Rune
+        love.graphics.setColor(0.3, 1, 0.5, 0.5 + math.sin(t * 3) * 0.3)
+        love.graphics.circle("line", baseX + 78, -18, 2.2)
+        love.graphics.line(baseX + 76, -18, baseX + 80, -18)
+        love.graphics.line(baseX + 78, -20, baseX + 78, -16)
+        -- Drip wisps
         for i = 0, 4 do
             local f = ((t * 0.8 + i * 0.2) % 1)
-            love.graphics.setColor(0.3, 1, 0.4, (1 - f) * 0.6)
-            love.graphics.circle("fill", baseX + 58, -14 + f * 18, 1.5 - f * 1)
+            love.graphics.setColor(0.3, 1, 0.4, (1 - f) * 0.7)
+            love.graphics.circle("fill", baseX + 98 + f * 3, -18 + f * 18, 2 - f * 1.3)
         end
+        love.graphics.setLineWidth(1)
     else
         love.graphics.setColor(0.2, 0.2, 0.25); love.graphics.rectangle("fill", baseX, -3, 22, 6)
     end
+    love.graphics.setLineWidth(1)  -- reset so hat/claw previews keep their own outline widths
     love.graphics.pop()
 end
 
@@ -2379,25 +2453,39 @@ local function drawPreviewCrab(x, y, scale, cosmetics, t)
     -- Gun skin (same local frame as claws, x=18 marks the muzzle base)
     local gun = cosmetics.gun or "pistol"
     local baseX = 18
+    love.graphics.setLineWidth(1)  -- reset before gun draw
     if gun == "pistol" then
-        love.graphics.setColor(0.2, 0.2, 0.25); love.graphics.rectangle("fill", baseX, -3, 22, 6)
-        love.graphics.setColor(0.4, 0.4, 0.5); love.graphics.rectangle("line", baseX, -3, 22, 6)
-        love.graphics.rectangle("fill", baseX + 19, -5, 2, 2)
-    elseif gun == "compact" then
-        love.graphics.setColor(0.22, 0.22, 0.26); love.graphics.rectangle("fill", baseX, -3, 17, 6)
-        love.graphics.setColor(0.4, 0.4, 0.48); love.graphics.rectangle("line", baseX, -3, 17, 6)
-        love.graphics.setColor(0.12, 0.12, 0.15); love.graphics.rectangle("fill", baseX + 1, -4, 15, 2)
+        love.graphics.setColor(0.22, 0.22, 0.26); love.graphics.rectangle("fill", baseX, -3, 22, 6)
+        love.graphics.setColor(0.4, 0.4, 0.48); love.graphics.rectangle("line", baseX, -3, 22, 6)
+        love.graphics.setColor(0.12, 0.12, 0.15); love.graphics.rectangle("fill", baseX + 1, -4, 20, 2)
         love.graphics.setColor(0.5, 0.5, 0.55)
-        for i = 0, 4 do love.graphics.line(baseX + 11 + i * 0.8, -4, baseX + 10 + i * 0.8, -2) end
+        for i = 0, 5 do love.graphics.line(baseX + 14 + i * 0.9, -4, baseX + 13 + i * 0.9, -2) end
         love.graphics.setColor(0.3, 0.3, 0.35)
-        love.graphics.rectangle("fill", baseX + 2, -5, 2, 1); love.graphics.rectangle("fill", baseX + 14, -5, 1.5, 1)
-        love.graphics.setColor(1, 1, 1); love.graphics.rectangle("fill", baseX + 14.5, -4.5, 0.6, 0.5)
+        love.graphics.rectangle("fill", baseX + 2, -5, 2, 1)
+        love.graphics.rectangle("fill", baseX + 18, -5, 2, 1)
+        love.graphics.setColor(1, 1, 1); love.graphics.rectangle("fill", baseX + 18.5, -4.5, 0.8, 0.5)
         love.graphics.setColor(0.25, 0.25, 0.3); love.graphics.setLineWidth(1.5)
-        love.graphics.arc("line", "open", baseX + 6, 4, 2, 0, math.pi); love.graphics.setLineWidth(1)
-        love.graphics.setColor(0.05, 0.05, 0.08); love.graphics.rectangle("fill", baseX + 8, -2, 3, 1)
+        love.graphics.arc("line", "open", baseX + 7, 4, 2.5, 0, math.pi); love.graphics.setLineWidth(1)
+        love.graphics.setColor(0.05, 0.05, 0.08); love.graphics.rectangle("fill", baseX + 10, -2, 4, 1)
         love.graphics.setColor(0.08, 0.08, 0.1)
-        for i = 0, 2 do love.graphics.rectangle("fill", baseX + 1, -1 + i * 1.3, 4, 0.5) end
-        love.graphics.setColor(0, 0, 0); love.graphics.circle("fill", baseX + 17, 0, 1)
+        for i = 0, 2 do love.graphics.rectangle("fill", baseX + 1, -1 + i * 1.3, 5, 0.5) end
+        love.graphics.setColor(0, 0, 0); love.graphics.circle("fill", baseX + 22, 0, 1.2)
+    elseif gun == "compact" then
+        love.graphics.setColor(0.22, 0.22, 0.26); love.graphics.rectangle("fill", baseX, -2.5, 14, 5)
+        love.graphics.setColor(0.4, 0.4, 0.48); love.graphics.rectangle("line", baseX, -2.5, 14, 5)
+        love.graphics.setColor(0.12, 0.12, 0.15); love.graphics.rectangle("fill", baseX + 1, -3.3, 12, 1.6)
+        love.graphics.setColor(0.5, 0.5, 0.55)
+        for i = 0, 3 do love.graphics.line(baseX + 9 + i * 0.8, -3.3, baseX + 8 + i * 0.8, -1.7) end
+        love.graphics.setColor(0.3, 0.3, 0.35)
+        love.graphics.rectangle("fill", baseX + 1.5, -4.1, 1.6, 0.9)
+        love.graphics.rectangle("fill", baseX + 11, -4.1, 1.2, 0.9)
+        love.graphics.setColor(1, 1, 1); love.graphics.rectangle("fill", baseX + 11.4, -3.7, 0.5, 0.4)
+        love.graphics.setColor(0.25, 0.25, 0.3); love.graphics.setLineWidth(1.3)
+        love.graphics.arc("line", "open", baseX + 5, 3, 1.8, 0, math.pi); love.graphics.setLineWidth(1)
+        love.graphics.setColor(0.05, 0.05, 0.08); love.graphics.rectangle("fill", baseX + 6, -1.8, 2.5, 0.9)
+        love.graphics.setColor(0.08, 0.08, 0.1)
+        for i = 0, 1 do love.graphics.rectangle("fill", baseX + 1, -0.8 + i * 1.2, 3.5, 0.45) end
+        love.graphics.setColor(0, 0, 0); love.graphics.circle("fill", baseX + 14, 0, 1)
     elseif gun == "magnum" then
         love.graphics.setColor(0.22, 0.2, 0.25); love.graphics.rectangle("fill", baseX + 8, -2.5, 18, 5)
         love.graphics.setColor(0.35, 0.3, 0.38); love.graphics.circle("fill", baseX + 5, 0, 6)
@@ -2861,30 +2949,63 @@ local function drawPreviewCrab(x, y, scale, cosmetics, t)
             love.graphics.line(sx - 1.5, sy, sx + 1.5, sy); love.graphics.line(sx, sy - 1.5, sx, sy + 1.5)
         end
     elseif gun == "scythe" then
-        love.graphics.setColor(0.35, 0.22, 0.1); love.graphics.setLineWidth(3)
-        love.graphics.line(baseX - 4, 0, baseX + 40, 0)
-        love.graphics.setColor(0.5, 0.32, 0.15); love.graphics.setLineWidth(1)
-        love.graphics.line(baseX - 4, -1, baseX + 40, -1)
-        love.graphics.setColor(0.12, 0.08, 0.05)
-        for _, x in ipairs({baseX + 4, baseX + 20, baseX + 36}) do
-            love.graphics.rectangle("fill", x, -2, 2, 4)
-        end
-        love.graphics.setColor(0.08, 0.06, 0.12)
-        love.graphics.polygon("fill",
-            baseX + 36, 0, baseX + 42, -8, baseX + 52, -16,
-            baseX + 58, -14, baseX + 52, -6, baseX + 44, 2)
-        love.graphics.setColor(0.3, 1, 0.5, 0.9 + math.sin(t * 4) * 0.1)
-        love.graphics.setLineWidth(2)
-        love.graphics.line(baseX + 38, 0, baseX + 44, -8, baseX + 52, -14, baseX + 56, -13)
+        -- Proper reaper scythe: long snath, grip wraps, metal collar, big
+        -- curved crescent blade (outer body + inner hook), steel spine
+        -- highlight, glowing green inner edge, rune, drip wisps.
+        love.graphics.setColor(0.35, 0.22, 0.1); love.graphics.setLineWidth(4)
+        love.graphics.line(baseX - 4, 0, baseX + 50, 0)
+        love.graphics.setColor(0.55, 0.36, 0.16); love.graphics.setLineWidth(1.5)
+        love.graphics.line(baseX - 4, -1.2, baseX + 50, -1.2)
         love.graphics.setLineWidth(1)
+        for _, wx in ipairs({baseX + 4, baseX + 22, baseX + 40}) do
+            love.graphics.setColor(0.1, 0.06, 0.04)
+            love.graphics.rectangle("fill", wx, -2.5, 3, 5)
+            love.graphics.setColor(0.85, 0.65, 0.2)
+            love.graphics.line(wx + 1, -2.5, wx + 1, 2.5)
+        end
+        love.graphics.setColor(0.3, 0.3, 0.36); love.graphics.rectangle("fill", baseX + 46, -3.5, 7, 7)
+        love.graphics.setColor(0.6, 0.6, 0.7); love.graphics.rectangle("line", baseX + 46, -3.5, 7, 7)
+        love.graphics.setColor(0.1, 0.08, 0.12); love.graphics.line(baseX + 49, -3.5, baseX + 49, 3.5)
+        -- Blade outer body
+        love.graphics.setColor(0.14, 0.1, 0.18)
+        love.graphics.polygon("fill",
+            baseX + 53, -2, baseX + 56, -12, baseX + 64, -22,
+            baseX + 78, -28, baseX + 94, -26, baseX + 100, -18,
+            baseX + 96, -10, baseX + 82, -12, baseX + 66, -10, baseX + 54, -4)
+        -- Inner hook
+        love.graphics.polygon("fill",
+            baseX + 54, -4, baseX + 66, -10, baseX + 82, -12, baseX + 96, -10,
+            baseX + 96, -6, baseX + 82, -6, baseX + 66, -4, baseX + 54, 0)
+        love.graphics.setColor(0.04, 0.02, 0.08); love.graphics.setLineWidth(1.5)
+        love.graphics.line(
+            baseX + 53, -2, baseX + 56, -12, baseX + 64, -22,
+            baseX + 78, -28, baseX + 94, -26, baseX + 100, -18,
+            baseX + 96, -10, baseX + 96, -6)
+        love.graphics.line(baseX + 96, -6, baseX + 82, -6, baseX + 66, -4, baseX + 54, 0)
+        love.graphics.setColor(0.42, 0.38, 0.48); love.graphics.setLineWidth(1.5)
+        love.graphics.line(baseX + 58, -14, baseX + 68, -22, baseX + 82, -26, baseX + 94, -24, baseX + 98, -18)
+        -- Glowing green cutting edge
+        local glow = 0.8 + math.sin(t * 5) * 0.2
+        love.graphics.setColor(0.3, 1, 0.5, glow); love.graphics.setLineWidth(2.2)
+        love.graphics.line(baseX + 54, -4, baseX + 66, -8, baseX + 80, -10, baseX + 94, -8, baseX + 96, -6)
+        love.graphics.setColor(1, 1, 0.9, glow * 0.8); love.graphics.setLineWidth(1)
+        love.graphics.line(baseX + 54, -4, baseX + 66, -8, baseX + 80, -10, baseX + 94, -8)
+        -- Rune
+        love.graphics.setColor(0.3, 1, 0.5, 0.5 + math.sin(t * 3) * 0.3)
+        love.graphics.circle("line", baseX + 78, -18, 2.2)
+        love.graphics.line(baseX + 76, -18, baseX + 80, -18)
+        love.graphics.line(baseX + 78, -20, baseX + 78, -16)
+        -- Drip wisps
         for i = 0, 4 do
             local f = ((t * 0.8 + i * 0.2) % 1)
-            love.graphics.setColor(0.3, 1, 0.4, (1 - f) * 0.6)
-            love.graphics.circle("fill", baseX + 58, -14 + f * 18, 1.5 - f * 1)
+            love.graphics.setColor(0.3, 1, 0.4, (1 - f) * 0.7)
+            love.graphics.circle("fill", baseX + 98 + f * 3, -18 + f * 18, 2 - f * 1.3)
         end
+        love.graphics.setLineWidth(1)
     else
         love.graphics.setColor(0.2, 0.2, 0.25); love.graphics.rectangle("fill", baseX, -3, 22, 6)
     end
+    love.graphics.setLineWidth(1)  -- reset so hat/eye outlines keep their widths
     love.graphics.pop()
 
     -- Eyes

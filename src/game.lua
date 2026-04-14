@@ -1064,8 +1064,30 @@ function Game:draw()
         love.graphics.setColor(1, 1, 1, 1)
     end
 
-    -- Custom cursor during gameplay
-    if self.state == "wave" or self.state == "cards" or self.state == "paused" then
+    -- Direction-aim indicator: in secondary aim mode, draw a dashed aim
+    -- line from the player so you can see where you're pointing.
+    local _aimMode = (self.persist and self.persist.aimMode) or 0
+    local _isAimDir = _aimMode == 1
+    if _isAimDir and self.state == "wave" and self.player then
+        local p = self.player
+        local ang = p.angle or 0
+        local dirX, dirY = math.cos(ang), math.sin(ang)
+        local startD = p.r + 4
+        local endD = startD + 150
+        local x1 = p.x + dirX * startD
+        local y1 = p.y + dirY * startD
+        local x2 = p.x + dirX * endD
+        local y2 = p.y + dirY * endD
+        love.graphics.setColor(1, 1, 1, 0.4)
+        love.graphics.setLineWidth(1.5)
+        love.graphics.line(x1, y1, x2, y2)
+        love.graphics.setLineWidth(1)
+    end
+
+    -- Custom cursor during gameplay (hidden in direction-aim mode since
+    -- the mouse is locked).
+    if (self.state == "wave" or self.state == "cards" or self.state == "paused")
+        and not (_isAimDir and self.state == "wave") then
         local mx, my = love.mouse.getPosition()
         love.graphics.setColor(0, 0, 0, 0.6)
         love.graphics.circle("fill", mx + 1, my + 1, 5)

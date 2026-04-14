@@ -54,9 +54,52 @@ function love.resize(w, h)
     computeFit()
 end
 
+-- Frame-accumulated mouse motion for direction-mode aim
+local _aimDX, _aimDY = 0, 0
+
 function love.update(dt)
     if dt > 0.05 then dt = 0.05 end
     Game:update(dt)
+    -- Mouse-lock management: relative mode only during gameplay (wave /
+    -- voidsea) AND aim mode "direction" (1). Menus all release the mouse.
+    local aimMode = (Game.persist and Game.persist.aimMode) or 0
+    local gameplay = Game.state == "wave" or Game.state == "voidsea"
+    local wantLock = (aimMode == 1) and gameplay
+    if love.mouse.getRelativeMode() ~= wantLock then
+        love.mouse.setRelativeMode(wantLock)
+    end
+    -- Direction-mode aim integration. Smoothly tracks a "stick velocity":
+    -- raw mouse deltas decay each frame, and the aim angle lerps toward
+    -- their direction. Eliminates micro-shake while still reacting fast.
+    if wantLock then
+        Game._aimVx = (Game._aimVx or 0) * 0.55 + _aimDX
+        Game._aimVy = (Game._aimVy or 0) * 0.55 + _aimDY
+        _aimDX, _aimDY = 0, 0
+        local mag = math.sqrt(Game._aimVx * Game._aimVx + Game._aimVy * Game._aimVy)
+        if mag > 1.2 then
+            local targetAngle = math.atan2(Game._aimVy, Game._aimVx)
+            local cur = Game._dirAim or targetAngle
+            local diff = targetAngle - cur
+            while diff > math.pi do diff = diff - math.pi * 2 end
+            while diff < -math.pi do diff = diff + math.pi * 2 end
+            -- Lerp speed scales with motion magnitude — slow flicks settle
+            -- gently, fast flicks snap quickly
+            local lerp = math.min(1, dt * (10 + math.min(mag, 60) * 0.6))
+            Game._dirAim = cur + diff * lerp
+        end
+    else
+        _aimDX, _aimDY = 0, 0
+        Game._aimVx, Game._aimVy = 0, 0
+    end
+end
+
+function love.mousemoved(x, y, dx, dy, istouch)
+    -- Accumulate raw motion deltas; love.update applies them with smoothing
+    local aimMode = (Game.persist and Game.persist.aimMode) or 0
+    if aimMode == 1 then
+        _aimDX = _aimDX + (dx or 0)
+        _aimDY = _aimDY + (dy or 0)
+    end
 end
 
 function love.draw()

@@ -163,8 +163,16 @@ end
 
 function Player:update(dt, game)
     self.game = game
-    local mx, my = love.mouse.getPosition()
-    self.angle = math.atan2(my - self.y, mx - self.x)
+    -- Aim mode: 0 = position (mouse pointer), 1 = direction (mouse locked,
+    -- aim follows the last movement vector). Direction mode keeps the angle
+    -- from game._dirAim, which main.lua's love.mousemoved updates.
+    local aimMode = (game.persist and game.persist.aimMode) or 0
+    if aimMode == 1 then
+        self.angle = game._dirAim or self.angle or 0
+    else
+        local mx, my = love.mouse.getPosition()
+        self.angle = math.atan2(my - self.y, mx - self.x)
+    end
 
     local dx, dy = 0, 0
     if love.keyboard.isDown("w") then dy = dy - 1 end
@@ -207,7 +215,7 @@ function Player:update(dt, game)
     if love.mouse.isDown(1) and not self.laserActive and not self.disabled then
         if self.stats.weaponType == "railgun" then
             self.railChargeTime = self.railChargeTime + dt
-            if self.railChargeTime >= 1.2 then
+            if self.railChargeTime >= 0.85 then
                 self:fireRail(game)
                 self.railChargeTime = 0
             end
@@ -486,9 +494,9 @@ function Player:fireRail(game)
         if count > 1 then off = (i - (count + 1) / 2) * 0.05 end
         local ang = self.angle + off + (math.random() - 0.5) * s.spread
         local b = Bullet.new(self.x + math.cos(ang) * self.r, self.y + math.sin(ang) * self.r,
-            math.cos(ang) * s.bulletSpeed * 2, math.sin(ang) * s.bulletSpeed * 2,
-            s.damage * 4, true)
-        b.size = s.bulletSize * 2.5
+            math.cos(ang) * s.bulletSpeed * 2.4, math.sin(ang) * s.bulletSpeed * 2.4,
+            s.damage * 5.5, true)
+        b.size = s.bulletSize * 3
         b.pierce = math.max(99, s.pierce + 99)
         b.color = {1, 1, 0.3}
         b.owner = self
@@ -500,8 +508,8 @@ function Player:fireRail(game)
         b.burn = s.burn
         b.chain = s.chain
         b.chainRange = s.chainRange
-        b.crit = s.crit
-        b.critMult = s.critMult
+        b.crit = 1.0                    -- always crit
+        b.critMult = math.max(s.critMult, 2.2)
         b.lifesteal = s.lifesteal
         table.insert(game.bullets, b)
     end
@@ -631,51 +639,76 @@ end
 function Player:_drawGun(style)
     style = style or "pistol"
     local baseX = self.r
+    love.graphics.setLineWidth(1)
     if style == "pistol" then
-        love.graphics.setColor(0.2, 0.2, 0.25)
-        love.graphics.rectangle("fill", baseX, -3, 22, 6)
-        love.graphics.setColor(0.4, 0.4, 0.5)
-        love.graphics.rectangle("line", baseX, -3, 22, 6)
-        -- Front sight
-        love.graphics.rectangle("fill", baseX + 19, -5, 2, 2)
-    elseif style == "compact" then
-        -- Compact pistol: slide with serrations, iron sights, trigger guard,
+        -- Full-size pistol with slide serrations, iron sights, trigger guard,
         -- ejection port, checkered grip, front muzzle.
         love.graphics.setColor(0.22, 0.22, 0.26)
-        love.graphics.rectangle("fill", baseX, -3, 17, 6)
+        love.graphics.rectangle("fill", baseX, -3, 22, 6)
         love.graphics.setColor(0.4, 0.4, 0.48)
-        love.graphics.rectangle("line", baseX, -3, 17, 6)
-        -- Slide on top (darker)
+        love.graphics.rectangle("line", baseX, -3, 22, 6)
         love.graphics.setColor(0.12, 0.12, 0.15)
-        love.graphics.rectangle("fill", baseX + 1, -4, 15, 2)
-        -- Slide serrations (diagonal grooves)
+        love.graphics.rectangle("fill", baseX + 1, -4, 20, 2)
         love.graphics.setColor(0.5, 0.5, 0.55)
-        for i = 0, 4 do
-            love.graphics.line(baseX + 11 + i * 0.8, -4, baseX + 10 + i * 0.8, -2)
+        for i = 0, 5 do
+            love.graphics.line(baseX + 14 + i * 0.9, -4, baseX + 13 + i * 0.9, -2)
+        end
+        love.graphics.setColor(0.3, 0.3, 0.35)
+        love.graphics.rectangle("fill", baseX + 2, -5, 2, 1)
+        love.graphics.rectangle("fill", baseX + 18, -5, 2, 1)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.rectangle("fill", baseX + 18.5, -4.5, 0.8, 0.5)
+        love.graphics.setColor(0.25, 0.25, 0.3)
+        love.graphics.setLineWidth(1.5)
+        love.graphics.arc("line", "open", baseX + 7, 4, 2.5, 0, math.pi)
+        love.graphics.setLineWidth(1)
+        love.graphics.setColor(0.05, 0.05, 0.08)
+        love.graphics.rectangle("fill", baseX + 10, -2, 4, 1)
+        love.graphics.setColor(0.08, 0.08, 0.1)
+        for i = 0, 2 do
+            love.graphics.rectangle("fill", baseX + 1, -1 + i * 1.3, 5, 0.5)
+        end
+        love.graphics.setColor(0, 0, 0)
+        love.graphics.circle("fill", baseX + 22, 0, 1.2)
+    elseif style == "compact" then
+        -- Compact: shorter than pistol but same level of detail — slide
+        -- with serrations, rear + front iron sights with white dot, trigger
+        -- guard, ejection port, checkered grip, black muzzle.
+        love.graphics.setColor(0.22, 0.22, 0.26)
+        love.graphics.rectangle("fill", baseX, -2.5, 14, 5)
+        love.graphics.setColor(0.4, 0.4, 0.48)
+        love.graphics.rectangle("line", baseX, -2.5, 14, 5)
+        -- Slide
+        love.graphics.setColor(0.12, 0.12, 0.15)
+        love.graphics.rectangle("fill", baseX + 1, -3.3, 12, 1.6)
+        -- Serrations
+        love.graphics.setColor(0.5, 0.5, 0.55)
+        for i = 0, 3 do
+            love.graphics.line(baseX + 9 + i * 0.8, -3.3, baseX + 8 + i * 0.8, -1.7)
         end
         -- Rear iron sight
         love.graphics.setColor(0.3, 0.3, 0.35)
-        love.graphics.rectangle("fill", baseX + 2, -5, 2, 1)
-        -- Front iron sight with white dot
-        love.graphics.rectangle("fill", baseX + 14, -5, 1.5, 1)
+        love.graphics.rectangle("fill", baseX + 1.5, -4.1, 1.6, 0.9)
+        -- Front iron sight + white dot
+        love.graphics.rectangle("fill", baseX + 11, -4.1, 1.2, 0.9)
         love.graphics.setColor(1, 1, 1)
-        love.graphics.rectangle("fill", baseX + 14.5, -4.5, 0.6, 0.5)
-        -- Trigger guard arc
+        love.graphics.rectangle("fill", baseX + 11.4, -3.7, 0.5, 0.4)
+        -- Trigger guard
         love.graphics.setColor(0.25, 0.25, 0.3)
-        love.graphics.setLineWidth(1.5)
-        love.graphics.arc("line", "open", baseX + 6, 4, 2, 0, math.pi)
+        love.graphics.setLineWidth(1.3)
+        love.graphics.arc("line", "open", baseX + 5, 3, 1.8, 0, math.pi)
         love.graphics.setLineWidth(1)
         -- Ejection port
         love.graphics.setColor(0.05, 0.05, 0.08)
-        love.graphics.rectangle("fill", baseX + 8, -2, 3, 1)
+        love.graphics.rectangle("fill", baseX + 6, -1.8, 2.5, 0.9)
         -- Checkered grip
         love.graphics.setColor(0.08, 0.08, 0.1)
-        for i = 0, 2 do
-            love.graphics.rectangle("fill", baseX + 1, -1 + i * 1.3, 4, 0.5)
+        for i = 0, 1 do
+            love.graphics.rectangle("fill", baseX + 1, -0.8 + i * 1.2, 3.5, 0.45)
         end
         -- Muzzle
         love.graphics.setColor(0, 0, 0)
-        love.graphics.circle("fill", baseX + 17, 0, 1)
+        love.graphics.circle("fill", baseX + 14, 0, 1)
     elseif style == "magnum" then
         -- Revolver: barrel + cylinder drum
         love.graphics.setColor(0.22, 0.2, 0.25)
