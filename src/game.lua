@@ -310,7 +310,7 @@ function Game:beginWave(w)
     local msg = isBoss and "The final enemy approaches..." or (#enemies .. " threats incoming")
     if shardThisWave then msg = msg .. "    •    1 Reality Shard" end
     self.waveMessage = msg
-    self.bannerTime = 2.2
+    self.bannerTime = 2.5
     self.waveStartHp = self.player.hp
     self.waveDamageTaken = 0
     self.waveBigHitDamage = 0
@@ -909,6 +909,8 @@ function Game:draw()
         UI:drawSlots(self); goto overlay
     elseif self.state == "resetdata" then
         UI:drawResetData(self); goto overlay
+    elseif self.state == "resetshards" then
+        UI:drawResetShards(self); goto overlay
     elseif self.state == "playlist" then
         UI:drawPlaylist(self); goto overlay
     elseif self.state == "aesthetics" then
@@ -1622,6 +1624,8 @@ function Game:keypressed(key)
         end
     elseif self.state == "resetdata" then
         UI:resetDataKey(self, key)
+    elseif self.state == "resetshards" then
+        UI:resetShardsKey(self, key)
     elseif self.state == "playlist" then
         if key == "escape" or key == "return" or key == "kpenter" then
             Save.save(self.persist)
@@ -1774,6 +1778,8 @@ function Game:mousepressed(x, y, button)
         UI:slotsClick(self, x, y)
     elseif self.state == "resetdata" and button == 1 then
         UI:resetDataClick(self, x, y)
+    elseif self.state == "resetshards" and button == 1 then
+        UI:resetShardsClick(self, x, y)
     elseif self.state == "playlist" and button == 1 then
         UI:playlistClick(self, x, y)
     elseif self.state == "aesthetics" and button == 1 then
@@ -1847,6 +1853,22 @@ function Game:openResetData()
     self.resetTyped = ""
     self.resetTypedAt = nil
     self.state = "resetdata"
+end
+
+function Game:openResetShards()
+    self.resetShardsTyped = ""
+    self.resetShardsTypedAt = nil
+    self.state = "resetshards"
+end
+
+function Game:performResetShards()
+    self.persist.realityShards = 0
+    Save.save(self.persist)
+    Audio:play("select")
+    Audio:play("whisper")
+    self.resetShardsTyped = ""
+    self.resetShardsTypedAt = nil
+    self.state = "options"
 end
 
 function Game:performResetData()

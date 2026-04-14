@@ -846,10 +846,7 @@ function UI:optionsClick(game, x, y)
     end
     b = game.optionsResetShardsBounds
     if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
-        game.persist.realityShards = 0
-        require("src.save").save(game.persist)
-        Audio:play("select")
-        Audio:play("whisper")
+        game:openResetShards()
         return
     end
     b = game.optionsBackBounds
@@ -1046,6 +1043,111 @@ function UI:resetDataKey(game, key)
             game.resetTypedAt = love.timer.getTime()
         else
             game.resetTypedAt = nil
+        end
+    end
+end
+
+-- ====== RESET SHARDS CONFIRMATION ======
+function UI:drawResetShards(game)
+    love.graphics.clear(0.06, 0.03, 0.1)
+    love.graphics.setFont(self.titleFont)
+    love.graphics.setColor(0.85, 0.45, 1)
+    love.graphics.printf("RESET REALITY SHARDS", 0, 60, 1280, "center")
+    love.graphics.setFont(self.font)
+    love.graphics.setColor(1, 1, 1, 0.9)
+    love.graphics.printf("This wipes ALL Reality Shards. Other progress is untouched.", 0, 160, 1280, "center")
+    love.graphics.printf("To confirm: TYPE 'RESET' below, then hold while the timer runs out.", 0, 190, 1280, "center")
+
+    local boxX, boxY, boxW, boxH = 440, 260, 400, 56
+    love.graphics.setColor(0.08, 0.02, 0.12, 0.9)
+    love.graphics.rectangle("fill", boxX, boxY, boxW, boxH, 8, 8)
+    love.graphics.setColor(0.85, 0.45, 1)
+    love.graphics.rectangle("line", boxX, boxY, boxW, boxH, 8, 8)
+    love.graphics.setFont(self.bigFont)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf(game.resetShardsTyped or "", boxX, boxY + 8, boxW, "center")
+    love.graphics.setFont(self.font)
+
+    local correct = (game.resetShardsTyped or "") == "RESET"
+    if correct then
+        local remain = math.max(0, 5 - ((love.timer.getTime() - (game.resetShardsTypedAt or 0))))
+        if remain > 0 then
+            love.graphics.setColor(1, 0.6, 1)
+            love.graphics.printf(string.format("CONFIRMING IN %.1f SECONDS...  Click CONFIRM to finalize or CANCEL to abort.", remain), 0, 340, 1280, "center")
+            local w = 800
+            local px = (1280 - w) / 2
+            local pct = 1 - remain / 5
+            love.graphics.setColor(0.2, 0.1, 0.3)
+            love.graphics.rectangle("fill", px, 370, w, 16, 6, 6)
+            love.graphics.setColor(0.85, 0.45, 1)
+            love.graphics.rectangle("fill", px, 370, w * pct, 16, 6, 6)
+        else
+            love.graphics.setColor(1, 0.6, 1)
+            love.graphics.printf("READY. Click CONFIRM RESET.", 0, 340, 1280, "center")
+        end
+    else
+        love.graphics.setColor(1, 0.8, 0.9)
+        love.graphics.printf("Type RESET (uppercase) to arm the confirmation.", 0, 340, 1280, "center")
+    end
+
+    local mx, my = love.mouse.getPosition()
+    local armed = correct and (love.timer.getTime() - (game.resetShardsTypedAt or 0)) >= 5
+    local confirmH = mx >= 440 and mx <= 640 and my >= 440 and my <= 490
+    if armed then
+        love.graphics.setColor(confirmH and 1 or 0.65, 0.25, confirmH and 1 or 0.8)
+    else
+        love.graphics.setColor(0.2, 0.08, 0.25, 0.6)
+    end
+    love.graphics.rectangle("fill", 440, 440, 200, 50, 10, 10)
+    love.graphics.setColor(1, 1, 1, armed and 1 or 0.4)
+    love.graphics.rectangle("line", 440, 440, 200, 50, 10, 10)
+    love.graphics.printf("CONFIRM RESET", 440, 455, 200, "center")
+    game.resetShardsConfirmBounds = armed and {440, 440, 200, 50} or nil
+
+    local cancelH = mx >= 660 and mx <= 860 and my >= 440 and my <= 490
+    love.graphics.setColor(cancelH and 1 or 0.5, 0.5, 0.7)
+    love.graphics.rectangle("fill", 660, 440, 200, 50, 10, 10)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", 660, 440, 200, 50, 10, 10)
+    love.graphics.printf("CANCEL", 660, 455, 200, "center")
+    game.resetShardsCancelBounds = {660, 440, 200, 50}
+end
+
+function UI:resetShardsClick(game, x, y)
+    local b = game.resetShardsConfirmBounds
+    if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
+        game:performResetShards()
+        return
+    end
+    b = game.resetShardsCancelBounds
+    if b and x >= b[1] and x <= b[1] + b[3] and y >= b[2] and y <= b[2] + b[4] then
+        game.state = "options"
+        game.resetShardsTyped = ""
+        game.resetShardsTypedAt = nil
+    end
+end
+
+function UI:resetShardsKey(game, key)
+    if key == "backspace" then
+        local s = game.resetShardsTyped or ""
+        game.resetShardsTyped = s:sub(1, #s - 1)
+        game.resetShardsTypedAt = nil
+        return
+    end
+    if key == "escape" then
+        game.state = "options"
+        game.resetShardsTyped = ""
+        game.resetShardsTypedAt = nil
+        return
+    end
+    if #key == 1 then
+        local s = (game.resetShardsTyped or "") .. key:upper()
+        if #s > 12 then s = s:sub(1, 12) end
+        game.resetShardsTyped = s
+        if s == "RESET" then
+            game.resetShardsTypedAt = love.timer.getTime()
+        else
+            game.resetShardsTypedAt = nil
         end
     end
 end
