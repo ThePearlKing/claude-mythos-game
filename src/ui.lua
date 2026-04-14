@@ -136,20 +136,8 @@ function UI:drawHUD(game)
         end
     end
 
-    -- Reality Shards counter (no maximum shown — purpose is a mystery).
-    -- Custom mode reads from the ephemeral run-local counter instead.
-    local rs
-    if game.isCustom then
-        rs = game.tempShards or 0
-    else
-        rs = (game.persist and game.persist.realityShards) or 0
-    end
-    if rs > 0 or game.activeShard or game.pendingShardWave then
-        local tt = love.timer.getTime()
-        love.graphics.setColor(0.8, 0.5, 1, 0.9 + math.sin(tt * 2) * 0.1)
-        love.graphics.printf(string.format("Shards: %d%s", rs, game.isCustom and " (custom)" or ""),
-            1100, 44, 170, "left")
-    end
+    -- (Reality Shards counter is shown only on the title/menu stats panel,
+    -- not during gameplay — the in-wave count is deliberately mysterious.)
 
     -- Forbidden Tally: glitched eldritch counter in the HUD when the card is active.
     if p.eldritchCounterUnlocked then

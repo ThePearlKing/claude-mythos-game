@@ -155,17 +155,20 @@ function Enemy:update(dt, game)
     if self.burnTime > 0 then
         self.burnTime = self.burnTime - dt
         self.hp = self.hp - self.burnDmg * dt
-        -- Fire-spread: each frame there's a chance the burn jumps to a
-        -- nearby non-burning enemy, carrying 70% of the remaining duration.
-        -- Throttled so flames don't erupt every frame.
+        -- Fire-spread: burn only jumps to enemies that are physically
+        -- TOUCHING this one (overlapping hitboxes). Throttled so flames
+        -- don't erupt every single frame.
         self.burnSpreadCD = (self.burnSpreadCD or 0) - dt
         if self.burnSpreadCD <= 0 and game and game.enemies and math.random() < 0.5 then
-            self.burnSpreadCD = 0.25 + math.random() * 0.2
+            self.burnSpreadCD = 0.15 + math.random() * 0.15
             for _, other in ipairs(game.enemies) do
                 if other ~= self and not other.dead and (other.burnTime or 0) <= 0 then
                     local odx = other.x - self.x
                     local ody = other.y - self.y
-                    if odx * odx + ody * ody < 80 * 80 then
+                    -- Touching = overlap (sum of radii, with tiny tolerance
+                    -- since collideR is smaller than visual r).
+                    local touchR = (self.r or 16) + (other.r or 16) + 2
+                    if odx * odx + ody * ody <= touchR * touchR then
                         other.burnTime = math.max(1.5, self.burnTime * 0.7)
                         other.burnDmg = self.burnDmg
                         -- Fire arc between the two for visual feedback
