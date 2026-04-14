@@ -1074,13 +1074,17 @@ function Game:draw()
         local dirX, dirY = math.cos(ang), math.sin(ang)
         local startD = p.r + 4
         local endD = startD + 150
-        local x1 = p.x + dirX * startD
-        local y1 = p.y + dirY * startD
-        local x2 = p.x + dirX * endD
-        local y2 = p.y + dirY * endD
-        love.graphics.setColor(1, 1, 1, 0.4)
+        local dashLen, gapLen = 6, 4
+        love.graphics.setColor(1, 1, 1, 0.28)
         love.graphics.setLineWidth(1.5)
-        love.graphics.line(x1, y1, x2, y2)
+        local d = startD
+        while d < endD do
+            local d2 = math.min(endD, d + dashLen)
+            love.graphics.line(
+                p.x + dirX * d, p.y + dirY * d,
+                p.x + dirX * d2, p.y + dirY * d2)
+            d = d + dashLen + gapLen
+        end
         love.graphics.setLineWidth(1)
     end
 
