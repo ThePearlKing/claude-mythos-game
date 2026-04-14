@@ -55,7 +55,7 @@ Cards.pool = {
     {id="freeze", name="Cryo Rounds", rarity="uncommon", color={0.5,0.9,1},
         desc="Bullets freeze enemies 1s",
         apply=function(p) p.stats.freeze = math.max(p.stats.freeze, 1) end},
-    {id="burn", name="Incendiary", rarity="uncommon", color={1,0.5,0.2},
+    {id="burn", name="Incendiary", rarity="rare", color={1,0.5,0.2},
         desc="Burns enemies. +14 burn DoT/sec.",
         apply=function(p) p.stats.burn = p.stats.burn + 14 end},
     {id="lifesteal", name="Vampiric Rounds", rarity="uncommon", color={1,0.3,0.4}, healthCard=true,
