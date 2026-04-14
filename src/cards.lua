@@ -96,6 +96,14 @@ Cards.pool = {
     {id="orb", name="Orbital Guard", rarity="rare", color={1,0.9,0.4},
         desc="+1 orbiting projectile",
         apply=function(p) p.stats.orbs = p.stats.orbs + 1 end},
+    {id="starved_arsenal", name="Starved Arsenal", rarity="rare", color={0.75,0.1,0.15}, oncePerRun=true,
+        desc="+80% damage. -40 max HP. Health cards become rare.",
+        apply=function(p)
+            p.stats.damage = p.stats.damage * 1.8
+            p.maxHp = math.max(10, p.maxHp - 40)
+            p.hp = math.min(p.hp, p.maxHp)
+            p.healthStarved = true
+        end},
     {id="shield", name="Energy Shield", rarity="rare", color={0.4,0.7,1}, healthCard=true,
         desc="+40 regenerating shield",
         apply=function(p) p.stats.shieldMax = p.stats.shieldMax + 40; p.stats.shieldRegen = p.stats.shieldRegen + 4; p.stats.shield = p.stats.shieldMax end},
@@ -595,7 +603,14 @@ function Cards.pick(n, wave, player, disableEldritch, finalWave)
                 if c.commonEldritch and not disableEldritch then w = w * 2.5 end
                 -- healthCard flag: moderately bumped so sustain options show
                 -- up reliably (winning runs usually need ~2 health cards).
-                if c.healthCard then w = w * 2.2 end
+                -- Once Starved Arsenal is taken, sustain becomes nearly
+                -- absent — the pact trades health for damage.
+                if c.healthCard then
+                    w = w * 2.2
+                    if player and player.healthStarved then
+                        w = w * 0.06 -- ~6% of baseline chance
+                    end
+                end
                 -- Non-eldritch-rarity cards still tagged eldritch (e.g. Forbidden Knowledge, Glimpse Beyond)
                 -- get an eldritch bump scaling with current level
                 if c.eldritch and c.rarity ~= "eldritch" and not disableEldritch then

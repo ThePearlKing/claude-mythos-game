@@ -553,6 +553,37 @@ function Game:update(dt)
         end
     end
 
+    -- Enemy-vs-enemy soft collision: push overlapping bodies apart using a
+    -- small collision radius (much smaller than the visual radius) so they
+    -- can still mostly overlap and pile on visually. Bosses are exempt so
+    -- they're not shoved by their own minions.
+    for i = 1, #self.enemies - 1 do
+        local a = self.enemies[i]
+        if not a.isBoss then
+            local ar = a.collideR or (a.r * 0.55)
+            for j = i + 1, #self.enemies do
+                local b = self.enemies[j]
+                if not b.isBoss then
+                    local br = b.collideR or (b.r * 0.55)
+                    local minD = ar + br
+                    local dx = b.x - a.x
+                    local dy = b.y - a.y
+                    local d2 = dx * dx + dy * dy
+                    if d2 < minD * minD and d2 > 0.0001 then
+                        local d = math.sqrt(d2)
+                        local push = (minD - d) * 0.5
+                        local nx = dx / d
+                        local ny = dy / d
+                        a.x = a.x - nx * push
+                        a.y = a.y - ny * push
+                        b.x = b.x + nx * push
+                        b.y = b.y + ny * push
+                    end
+                end
+            end
+        end
+    end
+
     -- Update player bullets
     for i = #self.bullets, 1, -1 do
         local b = self.bullets[i]
@@ -804,9 +835,18 @@ function Game:_drawKingKnowledge()
     -- Enemies: hitbox, HP bar + numeric, AI state, next-move telegraph
     for _, e in ipairs(self.enemies or {}) do
         if not e.dead then
-            -- Hitbox
+            -- Damage hitbox (visual radius, cyan)
             love.graphics.setColor(0.4, 1, 1, 0.75)
             love.graphics.circle("line", e.x, e.y, e.r)
+            -- Collision hitbox (smaller, yellow) — enemies use this to
+            -- push each other apart, so you can see overlap distance.
+            if not e.isBoss then
+                local cr = e.collideR or (e.r * 0.55)
+                love.graphics.setColor(1, 0.85, 0.25, 0.85)
+                love.graphics.setLineWidth(1.3)
+                love.graphics.circle("line", e.x, e.y, cr)
+                love.graphics.setLineWidth(1)
+            end
 
             -- HP bar
             if e.maxHp and e.maxHp > 0 then
