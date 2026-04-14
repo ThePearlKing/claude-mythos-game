@@ -390,21 +390,6 @@ function Game:endWave()
     local count = 3 + (self.player.stats.extraCards or 0)
     self.player.stats.extraCards = 0 -- reset grimoire bonus after use
     self.cardChoices = Cards.pick(count, self.wave, self.player, self.disableEldritch, self.finalWave)
-    -- DEBUG: force Ugnrak Beam into the first card offer for testing.
-    if self.wave == 1 then
-        local ugnrak
-        for _, c in ipairs(Cards.pool) do
-            if c.id == "eld_ugnrak" then ugnrak = c; break end
-        end
-        if ugnrak then
-            for i = #self.cardChoices, 1, -1 do
-                if self.cardChoices[i].id == "eld_ugnrak" then
-                    table.remove(self.cardChoices, i)
-                end
-            end
-            table.insert(self.cardChoices, 1, ugnrak)
-        end
-    end
     self.cardArmTime = 0.7 -- cannot click for 0.7s to prevent accidental selection
     self.state = "cards"
     Audio:play("card")
