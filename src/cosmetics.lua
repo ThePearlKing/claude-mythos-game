@@ -25,7 +25,6 @@ local function streak(n)      return function(p) return (p.bestStreak      or 0)
 -- Rep unlocks check the lifetime MAX rep so cosmetics never re-lock if your
 -- current reputation drifts below the threshold later.
 local function rep(n)         return function(p) return math.max(p.globalRepMax or 0, p.globalRep or 0) >= n end end
-local function repBelow(n)    return function(p) return (p.globalRep       or 50) <= n end end
 local function eldMax(n)      return function(p) return (p.eldritchMax     or 0) >= n end end
 local function winEld(n)      return function(p) return (p.winEldritchMax  or 0) >= n end end
 local function slug()         return function(p) return (p.slugcrabUnlocked or 0) == 1 end end
@@ -81,7 +80,7 @@ C.items = {
 
         -- Earned (legacy)
         {id="purple",       name="Umbral Chitin",     color={0.70, 0.30, 1.00}, hint="Eldritch level >= 6 in a run", unlock=eldMax(6)},
-        {id="shadow",       name="Shadow Form",       color={0.30, 0.30, 0.40}, hint="Global Rep <= 15",            unlock=repBelow(15)},
+        {id="shadow",       name="Shadow Form",       color={0.30, 0.30, 0.40}, hint="Eldritch level >= 4 in a run", unlock=eldMax(4)},
         {id="rainbow",      name="Prismatic",         color="rainbow",          hint="Best streak >= 5",            unlock=streak(5)},
         {id="abyssal",      name="Abyssal Chitin",    color={0.18, 0.05, 0.28}, hint="WIN a run at eldritch >= 8",  unlock=winEld(8)},
 
