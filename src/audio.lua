@@ -545,7 +545,7 @@ end
 
 Audio.masterVol = 1.0
 Audio.musicVol = 1.0
-Audio.sfxVol = 1.0
+Audio.sfxVol = 0.5
 
 function Audio:setMasterVolume(v) self.masterVol = v; self:applyVolumes() end
 function Audio:setMusicVolume(v)  self.musicVol  = v; self:applyVolumes() end

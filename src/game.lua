@@ -90,7 +90,7 @@ function Game:load()
     -- Apply saved volumes
     Audio.masterVol = self.persist.masterVol or 1.0
     Audio.musicVol  = self.persist.musicVol or 1.0
-    Audio.sfxVol    = self.persist.sfxVol or 1.0
+    Audio.sfxVol    = self.persist.sfxVol or 0.5
     -- Apply saved theme (build the one the player has selected)
     Audio:setTheme(self.persist.theme or Playlist.defaultId())
     self:resetGame()
@@ -400,19 +400,15 @@ function Game:beginWave(w)
         Fx.mood("#3a1145", 0.25)
         Fx.flicker(0.5, 600)
     end
-    -- Per-wave portal FX
+    -- Per-wave portal FX. Atmospheric only — no flashes or ripples on
+    -- normal waves (those got annoying fast). Boss waves get a sustained
+    -- crimson dread; shard waves get a soft violet calm.
     if isBoss then
-        Fx.mood("#6a0a28", 0.32)
-        Fx.pulsate("#ff3344", 70, 0.4)
-        Fx.vignette(0.55, 900)
-        Fx.flash("#ff3344", 240, 0.55)
-        Fx.shake(0.45, 350)
+        Fx.mood("#6a0a28", 0.35)
+        Fx.pulsate("#ff3344", 64, 0.35)
+        Fx.vignette(0.55, 1200)
     elseif shardThisWave then
-        Fx.calm("#a040ff", 0.28)
-        Fx.glow("#a040ff", 0.45, 1300)
-        Fx.ripple("#a040ff", 0.5, 0.5, 1100)
-    else
-        Fx.ripple("#9aa4ff", 0.5, 0.5, 600)
+        Fx.calm("#a040ff", 0.3)
     end
     if self.player.eldritch.level >= Eldritch.THRESH_CTHULHU then
         Audio:playMusic("eldritch")
@@ -485,15 +481,9 @@ function Game:endWave()
         return
     end
 
-    -- Light per-wave-clear flourish (skip on boss waves; their clear FX
-    -- fires from the boss-kill site instead).
-    if not self.isBossWave then
-        if self.waveDamageTaken == 0 then
-            Fx.pulse("#ccffdd", 700)
-        else
-            Fx.ripple("#88ccff", 0.5, 0.55, 500)
-        end
-    end
+    -- No per-wave-clear flourish — kept causing constant flashes/ripples
+    -- on the iframe chrome. Big atmosphere shifts only fire on boss
+    -- clears, victory, deaths, and shard collects.
 
     -- Offer cards
     local count = 3 + (self.player.stats.extraCards or 0)
@@ -630,11 +620,11 @@ function Game:update(dt)
         Voidsea.enter(self)
         Achievements.fire("voidsea_descent")
         Fx.clearAll()
-        Fx.tint("#0a1a3a", 0.55, 800)
-        Fx.calm("#1a3a66", 0.4)
-        Fx.pulse("#66e0ff", 1400)
-        Fx.glow("#66e0ff", 0.4, 1500)
-        Fx.vignette(0.4, 1200)
+        Fx.tint("#0a1a3a", 0.55, 900)
+        Fx.calm("#1a3a66", 0.45)
+        Fx.glow("#66e0ff", 0.5, 1700)
+        Fx.spread("#66e0ff", 1600, 6)
+        Fx.vignette(0.45, 1300)
         return
     end
 
@@ -701,15 +691,15 @@ function Game:update(dt)
         self.endTime = 0
         if p.eldritch and p.eldritch.cthulhu and p.eldritch.cthulhu.phase == "fire" then
             Achievements.fire("cthulhu_consumed")
-            Fx.shatter(1.0, 1100)
-            Fx.invert(280)
-            Fx.scanlines(0.85, 1500)
-            Fx.mood("#220033", 0.5)
+            Fx.shatter(1.0, 1200)
+            Fx.invert(320)
+            Fx.scanlines(0.9, 1800)
+            Fx.fractalBurst("#7733cc", 1500)
+            Fx.mood("#220033", 0.55)
         else
-            Fx.shatter(0.9, 700)
-            Fx.invert(180)
-            Fx.flash("#ff3344", 360, 0.7)
-            Fx.mood("#330011", 0.32)
+            Fx.shatter(0.85, 700)
+            Fx.invert(160)
+            Fx.mood("#330011", 0.3)
         end
         Fx.pulsate("off")
         Fx.calm("none")
@@ -835,11 +825,8 @@ function Game:update(dt)
                 Save.save(self.persist)
                 Achievements.check(self.persist)
                 Fx.calm("none")
-                Fx.flash("#ff66ff", 280, 0.6)
-                Fx.pulse("#bb55ff", 900)
-                Fx.glow("#bb55ff", 0.6, 1500)
-                Fx.ripple("#ff99ff", (s.x or 640) / 1280, (s.y or 360) / 720, 1100)
-                Fx.chroma(0.4, 220)
+                Fx.glow("#bb55ff", 0.55, 1300)
+                Fx.spread("#bb55ff", 1100, 6)
                 -- Lock out further shard spawns for the rest of this run.
                 self._shardCollectedThisRun = true
             end
@@ -1596,21 +1583,15 @@ function Game:pickCard(index)
     c.apply(self.player)
     table.insert(self.player.cardsTaken, c)
     self:_fireCardAchievement(c.id)
-    -- Rarity-tinted portal FX so card picks feel weighty.
+    -- Card pickups: subtle rim glow only — no flashes. Common/uncommon
+    -- stay completely silent so the chrome doesn't blink on every choice.
     local r = c.rarity
     if r == "legendary" then
-        Fx.flash("#ffaa33", 280, 0.55)
-        Fx.glow("#ffaa33", 0.5, 1100)
-        Fx.pulse("#ffaa33", 700)
+        Fx.glow("#ffaa33", 0.45, 900)
     elseif r == "eldritch" then
-        Fx.flash("#9944cc", 260, 0.55)
-        Fx.chroma(0.45, 240)
-        Fx.glow("#9944cc", 0.55, 1200)
+        Fx.glow("#9944cc", 0.5, 1100)
     elseif r == "cursed" then
-        Fx.flash("#aa3366", 260, 0.5)
-        Fx.tint("#aa3366", 0.35, 700)
-    elseif r == "rare" then
-        Fx.flash("#66aaff", 200, 0.4)
+        Fx.tint("#aa3366", 0.25, 600)
     end
     Audio:play("select")
     P:text(self.player.x, self.player.y, c.name, Cards.rarityColor(c.rarity), 2)
@@ -1641,11 +1622,11 @@ function Game:fireUgnrakBeam()
         shards = (self.persist and self.persist.realityShards) or 0
     end
     if shards >= 6 then
-        Fx.flash("#ff1122", 420, 0.9)
-        Fx.shake(0.85, 600)
-        Fx.chroma(0.7, 380)
-        Fx.pulse("#ff1122", 1100)
-        Fx.glow("#ff1122", 0.7, 1500)
+        -- Ugnrak Beam fires: huge fractal shockwave through the chrome.
+        Fx.shake(0.95, 700)
+        Fx.glow("#ff1122", 0.85, 1800)
+        Fx.fractalBurst("#ff1122", 1500)
+        Fx.vignette(0.7, 1600)
         if self.isCustom then
             self.tempShards = shards - 6
         else
@@ -1706,12 +1687,12 @@ function Game:fireUgnrakBeam()
         self.kingFractalHold = 12
         if p.eldritch then p.eldritch.kingFractal = 1.0 end
         p.invuln = 0
-        Fx.shatter(1.0, 1100)
+        Fx.shatter(1.0, 1200)
         Fx.invert(320)
-        Fx.scanlines(0.95, 1800)
-        Fx.flicker(0.85, 800)
-        Fx.chroma(0.85, 700)
-        Fx.mood("#220000", 0.55)
+        Fx.scanlines(0.95, 2000)
+        Fx.flashbang(900)
+        Fx.fractalBurst("#ff0000", 1500)
+        Fx.mood("#220000", 0.6)
         p:takeDamage(99999, nil, true)
         P:text(640, 200, "INSUFFICIENT SHARDS", {1, 0.2, 0.2}, 4)
         P:text(640, 260, "UGNRAK CLAIMS YOU", {1, 0.3, 0.2}, 4)
@@ -2028,7 +2009,7 @@ function Game:switchSlot(slot)
     self.persist = Save.load()
     Audio.masterVol = self.persist.masterVol or 1.0
     Audio.musicVol  = self.persist.musicVol or 1.0
-    Audio.sfxVol    = self.persist.sfxVol or 1.0
+    Audio.sfxVol    = self.persist.sfxVol or 0.5
     Audio:applyVolumes()
     Audio:setTheme(self.persist.theme or Playlist.defaultId())
     Audio:play("select")
@@ -2061,11 +2042,11 @@ function Game:performResetData()
     self.persist = {
         globalRep = 50, globalRepMax = 50, winStreak = 0, bestStreak = 0,
         totalWins = 0, totalRuns = 0, totalKills = 0, eldritchMax = 0,
-        masterVol = 1.0, musicVol = 1.0, sfxVol = 1.0,
+        masterVol = 1.0, musicVol = 1.0, sfxVol = 0.5,
     }
     Save.save(self.persist)
     -- Apply reset volumes and theme
-    Audio.masterVol = 1.0; Audio.musicVol = 1.0; Audio.sfxVol = 1.0
+    Audio.masterVol = 1.0; Audio.musicVol = 1.0; Audio.sfxVol = 0.5
     Audio:applyVolumes()
     Audio:setTheme(Playlist.defaultId())
     self.resetTyped = ""

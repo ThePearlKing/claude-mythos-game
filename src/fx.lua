@@ -53,4 +53,60 @@ function Fx.clearAll()
     emit("pulsate", "off")
 end
 
+-- Big-event shockwave: a center ripple plus a ring of perimeter ripples so
+-- the effect visibly emanates outward across the iframe chrome instead of
+-- just blinking once. Use for boss beams, ugnrak fires, churgly start, etc.
+function Fx.spread(color, ms, rings)
+    rings = rings or 6
+    emit("ripple", color, 0.5, 0.5, ms)
+    for i = 1, rings do
+        local a = (i / rings) * math.pi * 2
+        local x = 0.5 + math.cos(a) * 0.42
+        local y = 0.5 + math.sin(a) * 0.42
+        emit("ripple", color, x, y, math.floor(ms * 0.85))
+    end
+end
+
+-- Flashbang bloom: a wide white wash + glow rim + cascade of ripples,
+-- reads like a stun grenade going off across the entire iframe.
+function Fx.flashbang(ms)
+    ms = ms or 700
+    emit("tint", "#ffffff", 0.7, ms)
+    emit("glow", "#ffffff", 0.9, ms)
+    emit("scanlines", 0.55, math.floor(ms * 0.55))
+    emit("ripple", "#ffffff", 0.5, 0.5, ms)
+    local rings = 10
+    for i = 1, rings do
+        local a = (i / rings) * math.pi * 2
+        local x = 0.5 + math.cos(a) * 0.4
+        local y = 0.5 + math.sin(a) * 0.4
+        emit("ripple", "#ffffff", x, y, math.floor(ms * 0.8))
+    end
+end
+
+-- Fractal burst: layered ripple cascade at multiple radii + chroma split
+-- + flicker, so it reads as recursive/fractal interference. Use for the
+-- King ending, Ugnrak beam, Cthulhu obliteration — anything reality-warping.
+function Fx.fractalBurst(color, ms)
+    color = color or "#9933cc"
+    ms = ms or 1300
+    emit("chroma", 0.75, math.floor(ms * 0.55))
+    emit("flicker", 0.5, math.floor(ms * 0.4))
+    emit("ripple", color, 0.5, 0.5, ms)
+    -- Inner 8-point ring
+    for i = 1, 8 do
+        local a = (i / 8) * math.pi * 2
+        local x = 0.5 + math.cos(a) * 0.3
+        local y = 0.5 + math.sin(a) * 0.3
+        emit("ripple", color, x, y, math.floor(ms * 0.88))
+    end
+    -- Outer 12-point ring, rotated half-step for self-similar layering
+    for i = 1, 12 do
+        local a = (i / 12) * math.pi * 2 + math.pi / 12
+        local x = 0.5 + math.cos(a) * 0.46
+        local y = 0.5 + math.sin(a) * 0.46
+        emit("ripple", color, x, y, math.floor(ms * 0.7))
+    end
+end
+
 return Fx

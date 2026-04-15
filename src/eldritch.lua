@@ -97,26 +97,40 @@ function Eldritch.gainLevel(player, n)
     local oldLevel = player.eldritch.level
     player.eldritch.level = math.min(Eldritch.MAX_DISPLAY + 4, player.eldritch.level + n)
 
-    -- Portal FX on threshold crossings — escalating dread as you climb.
+    -- Portal FX on threshold crossings: subtle shake per level, persistent
+    -- ambient mood escalating with depth so the chrome feels haunted —
+    -- bigger climaxes only at the major thresholds.
     do
         local Fx = require("src.fx")
         local newLevel = player.eldritch.level
-        Fx.glow("#7733cc", 0.3, 500)
-        Fx.chroma(0.25, 160)
+        if n > 0 then Fx.shake(0.18 + math.min(0.25, newLevel * 0.012), 200) end
         local function crossed(t) return oldLevel < t and newLevel >= t end
         if crossed(Eldritch.THRESH_DISTORT or 9) then
-            Fx.flash("#5511aa", 280, 0.55); Fx.chroma(0.6, 280)
+            -- Distortion sets in. Persistent violet mood from now on.
+            Fx.mood("#1a0833", 0.28)
+            Fx.shake(0.4, 260)
         end
         if crossed(Eldritch.THRESH_GHOSTS or 13) then
-            Fx.shake(0.5, 320); Fx.vignette(0.5, 900); Fx.tint("#220044", 0.4, 700)
+            -- Ghost zone: stronger purple mood + slow pulsate. The chrome
+            -- itself starts feeling haunted.
+            Fx.mood("#220a44", 0.42)
+            Fx.pulsate("#7733cc", 40, 0.25)
+            Fx.vignette(0.5, 1100)
+            Fx.shake(0.55, 320)
         end
         if crossed(Eldritch.THRESH_TESSERACT or 17) then
-            Fx.shatter(0.7, 700); Fx.scanlines(0.6, 1200)
+            Fx.mood("#2a0a55", 0.52)
+            Fx.pulsate("#aa44ff", 36, 0.32)
+            Fx.spread("#9933cc", 1300, 6)
+            Fx.shake(0.7, 400)
         end
         if crossed(Eldritch.THRESH_CTHULHU or 22) then
-            Fx.shatter(0.95, 1100); Fx.invert(220)
-            Fx.mood("#220033", 0.5)
-            Fx.pulsate("#9933cc", 50, 0.4)
+            -- Cthulhu wakes. Maximum ambient dread + a single shatter beat.
+            Fx.shatter(0.95, 1100)
+            Fx.invert(220)
+            Fx.mood("#220033", 0.6)
+            Fx.pulsate("#9933cc", 50, 0.45)
+            Fx.spread("#9933cc", 1500, 8)
         end
     end
 
@@ -582,10 +596,11 @@ function Eldritch._updateKingOblit(state, dt, game)
                 Fx.shatter(1.0, 1500)
                 Fx.invert(500)
                 Fx.scanlines(1.0, 2200)
-                Fx.chroma(0.95, 1100)
-                Fx.flicker(0.85, 1100)
+                Fx.flashbang(1000)
+                Fx.fractalBurst("#ffd84a", 1700)
+                Fx.fractalBurst("#7733cc", 1500)
                 Fx.mood("#000000", 0.6)
-                Fx.tint("#ffd84a", 0.5, 1500)
+                Fx.tint("#ffd84a", 0.5, 1700)
             end
         end
     end

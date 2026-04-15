@@ -119,17 +119,13 @@ function Player:takeDamage(amt, source, unstoppable)
     self.flashTimer = 0.2
     Audio:play("hurt")
     P:spawn(self.x, self.y, 12, {1,0.3,0.3}, 220, 0.5, 3)
-    -- Portal hit FX (skip if HP is already 0 — shatter fires from gameover).
+    -- No portal flash on hits — they were strobing the chrome on chip
+    -- damage and reading as seizure-bait. Big hits (>=25% maxHp) get a
+    -- single subtle shake, nothing more.
     if self.hp > 0 then
-        local Fx = require("src.fx")
         local frac = amt / math.max(1, self.maxHp)
-        if frac >= 0.20 then
-            Fx.flash("#ff3344", 200, 0.7)
-            Fx.shake(0.55, 280)
-            Fx.chroma(0.35, 200)
-        else
-            Fx.flash("#ff3344", 110, 0.35)
-            Fx.shake(0.25, 160)
+        if frac >= 0.25 then
+            require("src.fx").shake(0.4, 240)
         end
     end
 

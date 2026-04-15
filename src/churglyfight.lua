@@ -72,11 +72,12 @@ function Churglyfight.start(game)
     do
         local Fx = require("src.fx")
         Fx.clearAll()
-        Fx.shatter(0.85, 900)
-        Fx.invert(220)
+        Fx.shatter(0.95, 1100)
+        Fx.invert(260)
+        Fx.fractalBurst("#cc0033", 1500)
         Fx.mood("#3a0512", 0.5)
-        Fx.pulsate("#cc0033", 60, 0.45)
-        Fx.vignette(0.65, 1300)
+        Fx.pulsate("#cc0033", 56, 0.45)
+        Fx.vignette(0.7, 1500)
     end
     -- Clear the King obliteration state + all its ripples/fractals
     if game.player and game.player.eldritch then
@@ -148,10 +149,9 @@ local function defeat(game)
         local Fx = require("src.fx")
         Fx.mood("none")
         Fx.pulsate("off")
-        Fx.flash("#ffaa55", 600, 0.8)
-        Fx.shake(0.85, 600)
-        Fx.pulse("#ffaa55", 1700)
+        Fx.shake(0.85, 700)
         Fx.glow("#ffaa55", 0.7, 2000)
+        Fx.spread("#ffaa55", 1700, 8)
         Fx.calm("#ffaa55", 0.4)
     end
     local lvl = game.player.eldritch and game.player.eldritch.level or 0
