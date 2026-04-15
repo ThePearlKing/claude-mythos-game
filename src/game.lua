@@ -263,10 +263,14 @@ function Game:recordRunResult(isWin)
     self.persist.globalRep = math.max(0, math.min(100, g))
     self.persist.globalRepMax = math.max(self.persist.globalRepMax or 50, self.persist.globalRep)
     -- Persist the run's eldritch peak so a mid-run climb counts toward the
-    -- next shard even after death/quit.
-    local runEld = (self.player.eldritch and self.player.eldritch.level) or 0
-    if runEld > (self.persist.peakEldritchSinceShard or 0) then
-        self.persist.peakEldritchSinceShard = runEld
+    -- next shard even after death/quit. Skipped if a shard was already
+    -- collected this run (peak already reset, mustn't re-bump) and in
+    -- custom mode (custom runs don't progress shards at all).
+    if not self.isCustom and not self._shardCollectedThisRun then
+        local runEld = (self.player.eldritch and self.player.eldritch.level) or 0
+        if runEld > (self.persist.peakEldritchSinceShard or 0) then
+            self.persist.peakEldritchSinceShard = runEld
+        end
     end
     Save.save(self.persist)
     if isWin and self.haunted then Achievements.fire("haunted_clear") end
@@ -637,11 +641,14 @@ function Game:update(dt)
     -- Eldritch update
     Eldritch.update(self.player.eldritch, dt, self)
     -- Track the peak eldritch reached since the last shard collect. Drives
-    -- per-climb shard arming (see beginWave). Updated in-memory each tick;
-    -- persisted at wave boundaries and run end, not every frame.
-    local curLvl = self.player.eldritch.level or 0
-    if self.persist and curLvl > (self.persist.peakEldritchSinceShard or 0) then
-        self.persist.peakEldritchSinceShard = curLvl
+    -- per-climb shard arming (see beginWave). Suspended after a shard is
+    -- collected this run AND in custom mode, so the next shard genuinely
+    -- requires a fresh run dedicated to climbing.
+    if not self.isCustom and not self._shardCollectedThisRun then
+        local curLvl = self.player.eldritch.level or 0
+        if self.persist and curLvl > (self.persist.peakEldritchSinceShard or 0) then
+            self.persist.peakEldritchSinceShard = curLvl
+        end
     end
 
     -- Haunted: shrimp spirits drift in mid-wave
