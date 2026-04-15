@@ -2090,15 +2090,56 @@ local function drawTrailPreview(x, y, scale, trail, t)
             love.graphics.ellipse("fill", math.cos(a) * r, math.sin(a) * r * 0.6 + 12, 2.5, 1.2)
         end
     elseif trail == "lightning" then
-        for i = 1, 8 do
-            local px = math.sin(t * 6 + i) * 18
-            local py = (t * 50 + i * 5) % 30 + 8
-            love.graphics.setColor(0.6, 0.9, 1, 0.8)
-            love.graphics.line(px, py - 3, px + 2, py, px, py + 3)
+        -- Jagged electric arcs radiating from the player in all directions.
+        -- Flickers by re-seeding ~12x/sec; arc count and angle vary per frame.
+        local seed = math.floor(t * 12)
+        local arcs = 6
+        for i = 1, arcs do
+            local rngA = math.sin(seed * 71.3 + i * 13.7) * 1000
+            local rngB = math.sin(seed * 37.1 + i * 7.9) * 1000
+            local jitterAng = (rngA - math.floor(rngA)) - 0.5
+            local jitterLen = (rngB - math.floor(rngB))
+            local ang = (i / arcs) * math.pi * 2 + jitterAng * 0.4
+            local len = 16 + jitterLen * 14
+            local segs = 5
+            local pts = {0, 6}
+            local stepLen = len / segs
+            for s = 1, segs do
+                local progress = s / segs
+                local rngS = math.sin(seed * 91.7 + i * 11.3 + s * 17.1) * 1000
+                local jr = ((rngS - math.floor(rngS)) - 0.5) * 6 * (1 - progress * 0.5)
+                local cx = math.cos(ang) * stepLen * s
+                local cy = math.sin(ang) * stepLen * s
+                local jx = -math.sin(ang) * jr
+                local jy = math.cos(ang) * jr
+                pts[#pts + 1] = cx + jx
+                pts[#pts + 1] = cy + jy + 6
+            end
+            love.graphics.setColor(0.45, 0.75, 1, 0.85)
+            love.graphics.setLineWidth(2.2)
+            love.graphics.line(pts)
+            love.graphics.setColor(1, 1, 1, 0.95)
+            love.graphics.setLineWidth(1)
+            love.graphics.line(pts)
         end
-        for i = 0, 3 do
-            love.graphics.setColor(0.6, 0.95, 1, 0.6)
-            love.graphics.print("z", i * 5 - 6, (t * 40 + i * 10) % 30 + 4)
+        love.graphics.setLineWidth(1)
+    elseif trail == "shiny" then
+        -- Bright white twinkling sparkles + occasional cross-shaped sheen.
+        for i = 1, 12 do
+            local a = (t * 1.4 + i * 0.55) % (math.pi * 2)
+            local r = 22 + 8 * math.sin(t * 2.3 + i)
+            local sx = math.cos(a) * r
+            local sy = math.sin(a) * r * 0.55 + 12
+            local twink = 0.4 + 0.5 * math.sin(t * 5 + i * 1.7)
+            love.graphics.setColor(1, 1, 1, twink)
+            love.graphics.circle("fill", sx, sy, 1.4)
+            -- Tiny 4-point sheen on the brighter ones
+            if twink > 0.7 then
+                love.graphics.setLineWidth(1)
+                love.graphics.setColor(1, 1, 1, twink * 0.8)
+                love.graphics.line(sx - 3, sy, sx + 3, sy)
+                love.graphics.line(sx, sy - 3, sx, sy + 3)
+            end
         end
     elseif trail == "shadow" then
         for i = 1, 8 do
@@ -2177,21 +2218,27 @@ end
 local function drawPreviewCrab(x, y, scale, cosmetics, t)
     -- Render the trail BEHIND the crab.
     drawTrailPreview(x, y, scale, cosmetics.trail, t)
-    -- Slug tail preview: only when the "slug" TRAIL is equipped (body-independent)
+    -- Slug tail preview: only when the "slug" TRAIL is equipped (body-independent).
+    -- Drawn in OUTLINE color (darker shade of the body) so it contrasts with the
+    -- body and reads clearly as a tail. Tapers down-and-back; bounded inside the
+    -- preview box so it can't reach the WEAPON strip below.
     if cosmetics.trail == "slug" then
         love.graphics.push()
         love.graphics.translate(x, y)
         love.graphics.scale(scale, scale)
+        local body = Cosmetics.bodyColor(cosmetics)
+        local deep = Cosmetics.outlineColor(cosmetics, body)
         local segs = 14
         for i = segs, 1, -1 do
             local progress = i / segs
-            local r = 16 * (1 - progress) ^ 1.2 + 1.6
-            local wave = math.sin(t * 2 + progress * 3) * (progress * 3)
-            local tx = -progress * 21 + wave * 0.3
-            local ty = progress * 9 + wave
-            local b = Cosmetics.bodyColor(cosmetics)
-            love.graphics.setColor(b[1], b[2], b[3])
+            local r = 12 * (1 - progress) ^ 1.1 + 1.8
+            local wave = math.sin(t * 2 + progress * 3) * (progress * 2.5)
+            local tx = -progress * 26 + wave * 0.3
+            local ty = 2 + progress * 12 + wave
+            love.graphics.setColor(deep[1], deep[2], deep[3])
             love.graphics.circle("fill", tx, ty, r)
+            love.graphics.setColor(body[1] * 0.6, body[2] * 0.6, body[3] * 0.6, 0.9)
+            love.graphics.circle("line", tx, ty, r)
         end
         love.graphics.pop()
     end

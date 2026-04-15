@@ -2454,10 +2454,18 @@ function Player:emitTrail()
         local col = (math.random() < 0.5) and {1, 0.7, 0.8} or {1, 0.9, 0.8}
         P:spawn(self.x + math.random(-8, 8), self.y + math.random(-3, 6), 1, col, 40, 1.2, 3)
     elseif trail == "lightning" then
+        -- Bright cyan/white sparks; the actual arcs are drawn around the
+        -- player in the draw routine (see lightning render block below).
+        self.trailTimer = 0.04
+        P:spawn(self.x + math.random(-12, 12), self.y + math.random(-12, 12), 2, {0.7, 0.95, 1}, 120, 0.25, 2)
+        if math.random() < 0.4 then
+            P:spawn(self.x + math.random(-14, 14), self.y + math.random(-14, 14), 1, {1, 1, 1}, 160, 0.18, 2)
+        end
+    elseif trail == "shiny" then
         self.trailTimer = 0.05
-        P:spawn(self.x + math.random(-10, 10), self.y + math.random(-6, 6), 2, {0.6, 0.9, 1}, 90, 0.3, 2)
-        if math.random() < 0.15 then
-            P:text(self.x + math.random(-10, 10), self.y + math.random(-6, 6), "z", {0.7, 1, 1}, 0.35)
+        P:spawn(self.x + math.random(-10, 10), self.y + math.random(-10, 10), 1, {1, 1, 1}, 50, 0.6, 2)
+        if math.random() < 0.4 then
+            P:spawn(self.x + math.random(-12, 12), self.y + math.random(-12, 12), 2, {1, 1, 1}, 80, 0.35, 2)
         end
     elseif trail == "shadow" then
         self.trailTimer = 0.06
@@ -2601,6 +2609,48 @@ function Player:draw()
                 end
             end
         end
+    end
+
+    -- Lightning trail — jagged electric arcs radiate from the player in
+    -- every direction. Re-seeded a few times per second so the arcs flicker
+    -- like real lightning instead of looking like static lines.
+    if c.trail == "lightning" then
+        local lt = love.timer.getTime()
+        local seed = math.floor(lt * 14)
+        local arcs = 7
+        for i = 1, arcs do
+            local rngA = math.sin(seed * 71.3 + i * 13.7) * 1000
+            local rngB = math.sin(seed * 37.1 + i * 7.9) * 1000
+            local jitterAng = (rngA - math.floor(rngA)) - 0.5
+            local jitterLen = (rngB - math.floor(rngB))
+            local ang = (i / arcs) * math.pi * 2 + jitterAng * 0.5
+            local len = 38 + jitterLen * 30
+            local segs = 6
+            local pts = {self.x, self.y}
+            local stepLen = len / segs
+            for s = 1, segs do
+                local progress = s / segs
+                local rngS = math.sin(seed * 91.7 + i * 11.3 + s * 17.1) * 1000
+                local jr = ((rngS - math.floor(rngS)) - 0.5) * 12 * (1 - progress * 0.4)
+                local cx = math.cos(ang) * stepLen * s
+                local cy = math.sin(ang) * stepLen * s
+                local jx = -math.sin(ang) * jr
+                local jy = math.cos(ang) * jr
+                pts[#pts + 1] = self.x + cx + jx
+                pts[#pts + 1] = self.y + cy + jy
+            end
+            love.graphics.setColor(0.4, 0.7, 1, 0.55)
+            love.graphics.setLineWidth(5)
+            love.graphics.line(pts)
+            love.graphics.setColor(0.7, 0.92, 1, 0.85)
+            love.graphics.setLineWidth(2.5)
+            love.graphics.line(pts)
+            love.graphics.setColor(1, 1, 1, 0.95)
+            love.graphics.setLineWidth(1)
+            love.graphics.line(pts)
+        end
+        love.graphics.setLineWidth(1)
+        love.graphics.setColor(1, 1, 1, 1)
     end
 
     -- Ugnrak trail — 3 serpents orbit the player. Each serpent is drawn as

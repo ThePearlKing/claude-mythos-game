@@ -237,7 +237,8 @@ C.items = {
         {id="bubbles",    name="Bubbles",         hint="Win 2 runs",                  unlock=wins(2)},
         {id="petals",     name="Flower Petals",   hint="Global Rep >= 75",            unlock=rep(75)},
         {id="void",       name="Void Mist",       hint="Eldritch level >= 6 in a run", unlock=eldMax(6)},
-        {id="slug",       name="Slug Tail",       hint="Unlock the Slugcrab secret",  unlock=slug()},
+        {id="slug",       name="Slugcrab Tail",   hint="Unlock the Slugcrab secret",  unlock=slug()},
+        {id="shiny",      name="Shiny",           hint="Win 8 runs total",            unlock=wins(8)},
         -- Harder
         {id="lightning",  name="Lightning",       hint="Win 4 runs on Hard+",         unlock=hardWins(4)},
         {id="shadow",     name="Shadow",          hint="Win 2 runs on Nightmare+",    unlock=nightmareWins(2)},
