@@ -22,7 +22,9 @@ local function always() return true end
 local function kills(n)       return function(p) return (p.totalKills      or 0) >= n end end
 local function wins(n)        return function(p) return (p.totalWins       or 0) >= n end end
 local function streak(n)      return function(p) return (p.bestStreak      or 0) >= n end end
-local function rep(n)         return function(p) return (p.globalRep       or 0) >= n end end
+-- Rep unlocks check the lifetime MAX rep so cosmetics never re-lock if your
+-- current reputation drifts below the threshold later.
+local function rep(n)         return function(p) return math.max(p.globalRepMax or 0, p.globalRep or 0) >= n end end
 local function repBelow(n)    return function(p) return (p.globalRep       or 50) <= n end end
 local function eldMax(n)      return function(p) return (p.eldritchMax     or 0) >= n end end
 local function winEld(n)      return function(p) return (p.winEldritchMax  or 0) >= n end end

@@ -235,6 +235,7 @@ function Game:recordRunResult(isWin)
     local g = self.persist.globalRep or 50
     g = g * (1 - weight) + runRep * weight
     self.persist.globalRep = math.max(0, math.min(100, g))
+    self.persist.globalRepMax = math.max(self.persist.globalRepMax or 50, self.persist.globalRep)
     Save.save(self.persist)
 end
 
@@ -448,6 +449,7 @@ function Game:onKill(enemy, source)
             local g = self.persist.globalRep or 50
             g = g * (1 - weight) + runRep * weight
             self.persist.globalRep = math.max(0, math.min(100, g))
+            self.persist.globalRepMax = math.max(self.persist.globalRepMax or 50, self.persist.globalRep)
             Save.save(self.persist)
             P:text(enemy.x, enemy.y - 40, "BOSS CLEARED", {1, 0.85, 0.2}, 2.5)
         end
@@ -693,7 +695,7 @@ function Game:update(dt)
         local dx = p.x - s.x
         local dy = p.y - s.y
         local dd = dx * dx + dy * dy
-        s.visible = dd < 180 * 180
+        s.visible = dd < 280 * 280
         if dd < 28 * 28 then
             -- In custom mode, shards are ephemeral — stay in a run-local
             -- counter and never touch persist. Shouldn't naturally spawn
@@ -1874,7 +1876,7 @@ end
 function Game:performResetData()
     -- Wipe persistent save by replacing it with defaults
     self.persist = {
-        globalRep = 50, winStreak = 0, bestStreak = 0,
+        globalRep = 50, globalRepMax = 50, winStreak = 0, bestStreak = 0,
         totalWins = 0, totalRuns = 0, totalKills = 0, eldritchMax = 0,
         masterVol = 1.0, musicVol = 1.0, sfxVol = 1.0,
     }

@@ -514,10 +514,20 @@ function UI:drawMenu(game)
     love.graphics.printf(string.format("Win Streak: %d  (best: %d)", p.winStreak or 0, p.bestStreak or 0), 20, 48, 400, "left")
     love.graphics.setColor(0.8, 0.8, 0.8)
     love.graphics.printf(string.format("Wins: %d    Runs: %d", p.totalWins or 0, p.totalRuns or 0), 20, 72, 400, "left")
-    -- Reality Shards counter (surfaces once you've collected at least one)
+    -- Reality Shards counter (surfaces once you've collected at least one).
+    -- Shows collected / total and how many are still out there to find.
     if (p.realityShards or 0) > 0 then
+        local total = #(require("src.eldritch").SHARD_THRESHOLDS)
+        local got = p.realityShards
+        local left = math.max(0, total - got)
         love.graphics.setColor(0.85, 0.4, 1)
-        love.graphics.printf(string.format("Reality Shards: %d", p.realityShards), 20, 96, 400, "left")
+        local label
+        if left > 0 then
+            label = string.format("Reality Shards: %d / %d  (%d left to find)", got, total, left)
+        else
+            label = string.format("Reality Shards: %d / %d  (all found)", got, total)
+        end
+        love.graphics.printf(label, 20, 96, 520, "left")
     end
 end
 

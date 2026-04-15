@@ -32,6 +32,7 @@ end
 local function readPath(path)
     local data = {
         globalRep = 50,
+        globalRepMax = 50,
         winStreak = 0,
         bestStreak = 0,
         totalWins = 0,
