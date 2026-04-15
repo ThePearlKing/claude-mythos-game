@@ -435,20 +435,45 @@ function Player:shoot(game)
     local dmg = self:computeShotDamage()
 
     local bullets = cap(s.bullets, "bullets")
+    -- Bullet Beam convergence helper: fans spawn points perpendicular to aim,
+    -- then angles each bullet at a distant target so they all meet at a point.
+    local function beamFan(count, perBulletDmg, spacing)
+        local convergeD = 420
+        local dx, dy = math.cos(self.angle), math.sin(self.angle)
+        local tx = self.x + dx * convergeD
+        local ty = self.y + dy * convergeD
+        for i = 1, count do
+            local perp = (i - (count + 1) / 2) * spacing
+            local spawnX = self.x + dx * self.r + (-dy) * perp
+            local spawnY = self.y + dy * self.r + dx * perp
+            local ang = math.atan2(ty - spawnY, tx - spawnX)
+            self:fireBullet(game, ang, perBulletDmg, spawnX, spawnY)
+        end
+    end
     if s.weaponType == "shotgun" then
         local count = 5 + bullets - 1
-        for i = 1, count do
-            local spread = (i - (count+1)/2) * 0.18
-            self:fireBullet(game, self.angle + spread, dmg * 0.6)
+        if self.bulletBeam then
+            beamFan(count, dmg * 0.6, 8)
+        else
+            for i = 1, count do
+                local spread = (i - (count+1)/2) * 0.18
+                self:fireBullet(game, self.angle + spread, dmg * 0.6)
+            end
         end
         Audio:play("shoot2")
     else
-        for i = 1, bullets do
-            local off = 0
-            if bullets > 1 then off = (i - (bullets+1)/2) * 0.12 end
-            local spread = (math.random() - 0.5) * s.spread * 2
-            if self.wobbleShots then spread = spread + (math.random() - 0.5) * 0.3 end
-            self:fireBullet(game, self.angle + off + spread, dmg)
+        if self.bulletBeam and bullets > 1 then
+            beamFan(bullets, dmg, 10)
+        else
+            for i = 1, bullets do
+                local off = 0
+                if bullets > 1 then off = (i - (bullets+1)/2) * 0.12 end
+                local spread = self.bulletBeam and 0 or (math.random() - 0.5) * s.spread * 2
+                if self.wobbleShots and not self.bulletBeam then
+                    spread = spread + (math.random() - 0.5) * 0.3
+                end
+                self:fireBullet(game, self.angle + off + spread, dmg)
+            end
         end
         -- Tri-way: extra bullets perpendicular
         if self.triWay then
@@ -460,9 +485,11 @@ function Player:shoot(game)
     self._forceCritNextShot = nil
 end
 
-function Player:fireBullet(game, angle, damage)
+function Player:fireBullet(game, angle, damage, originX, originY)
     local s = self.stats
-    local b = Bullet.new(self.x + math.cos(angle) * self.r, self.y + math.sin(angle) * self.r,
+    local sx = originX or (self.x + math.cos(angle) * self.r)
+    local sy = originY or (self.y + math.sin(angle) * self.r)
+    local b = Bullet.new(sx, sy,
         math.cos(angle) * s.bulletSpeed, math.sin(angle) * s.bulletSpeed,
         damage, true)
     b.size = s.bulletSize
@@ -489,11 +516,26 @@ function Player:fireRail(game)
     local s = self.stats
     -- Railgun now inherits bullet count (multishot fans), homing, explosive, freeze, burn, chain, crit
     local count = s.bullets
+    local beam = self.bulletBeam and count > 1
+    local convergeD = 420
+    local dxC, dyC = math.cos(self.angle), math.sin(self.angle)
+    local tx, ty = self.x + dxC * convergeD, self.y + dyC * convergeD
     for i = 1, count do
-        local off = 0
-        if count > 1 then off = (i - (count + 1) / 2) * 0.05 end
-        local ang = self.angle + off + (math.random() - 0.5) * s.spread
-        local b = Bullet.new(self.x + math.cos(ang) * self.r, self.y + math.sin(ang) * self.r,
+        local ang, spawnX, spawnY
+        if beam then
+            local perp = (i - (count + 1) / 2) * 12
+            spawnX = self.x + dxC * self.r + (-dyC) * perp
+            spawnY = self.y + dyC * self.r + dxC * perp
+            ang = math.atan2(ty - spawnY, tx - spawnX)
+        else
+            local off = 0
+            if count > 1 then off = (i - (count + 1) / 2) * 0.05 end
+            local jitter = self.bulletBeam and 0 or (math.random() - 0.5) * s.spread
+            ang = self.angle + off + jitter
+            spawnX = self.x + math.cos(ang) * self.r
+            spawnY = self.y + math.sin(ang) * self.r
+        end
+        local b = Bullet.new(spawnX, spawnY,
             math.cos(ang) * s.bulletSpeed * 2.4, math.sin(ang) * s.bulletSpeed * 2.4,
             s.damage * 5.5, true)
         b.size = s.bulletSize * 3
@@ -527,7 +569,8 @@ function Player:fireLaser(game, dt)
     -- Faster bullets → faster damage tick. Clamped so slow ammo still does work.
     local speedMult = math.max(0.6, (s.bulletSpeed or 700) / 700)
     -- Spread fan uses player's bullet spread so Stabilizer/Scatter both apply.
-    local spreadAng = math.max(0.05, s.spread or 0.05)
+    -- Bullet Beam overrides it to 0 so every beam converges on the aim point.
+    local spreadAng = self.bulletBeam and 0 or math.max(0.05, s.spread or 0.05)
     self.laserEnds = {}
     local primaryIdx = math.ceil(beams / 2)
 
@@ -542,9 +585,10 @@ function Player:fireLaser(game, dt)
         if beams > 1 then
             angleOffset = (beamIdx - (beams + 1) / 2) * (spreadAng * 2.0)
         end
-        -- Wobble: Scrambled Aim wiggles the beam angle each frame.
+        -- Wobble: Scrambled Aim wiggles the beam angle each frame (suppressed
+        -- by Bullet Beam since that card promises perfect aim).
         local wobble = 0
-        if self.wobbleShots then
+        if self.wobbleShots and not self.bulletBeam then
             local lt = love.timer.getTime()
             wobble = (math.sin(lt * 22 + beamIdx * 1.7) + math.sin(lt * 31 + beamIdx)) * 0.05
         end

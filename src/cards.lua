@@ -163,6 +163,9 @@ Cards.pool = {
     {id="singularity", name="Singularity Rounds", rarity="legendary", color={0.4,0.1,0.8},
         desc="Pierce 5, chain 2, homing",
         apply=function(p) p.stats.pierce = p.stats.pierce + 5; p.stats.chain = p.stats.chain + 2; p.stats.homing = p.stats.homing + 2 end},
+    {id="bullet_beam", name="Bullet Beam", rarity="legendary", color={1,0.85,0.3}, oncePerRun=true, requiresBullets=2,
+        desc="Perfect aim. 0 spread; every bullet converges on your target instead of fanning out.",
+        apply=function(p) p.stats.spread = 0; p.bulletBeam = true end},
 
     -- CURSED (big buffs, big drawbacks)
     {id="cursed_blood", name="Blood Pact", rarity="cursed", color={0.5,0,0.1},
@@ -587,6 +590,8 @@ function Cards.pick(n, wave, player, disableEldritch, finalWave)
             local belowMinWave = c.minWave and wave < c.minWave
             -- Weapon-specific cards (e.g. Overcharged Beam) only appear if you own that weapon
             local wrongWeapon = c.requiresWeapon and (not player or (player.stats and player.stats.weaponType) ~= c.requiresWeapon)
+            -- Bullet-count gate (Bullet Beam needs >1 bullet to matter)
+            local tooFewBullets = c.requiresBullets and (not player or (player.stats and player.stats.bullets or 1) < c.requiresBullets)
             -- oncePerRun cards disappear after being picked up this run.
             local alreadyHave = false
             if c.oncePerRun and player and player.cardsTaken then
@@ -601,6 +606,7 @@ function Cards.pick(n, wave, player, disableEldritch, finalWave)
                 and not eldritchCap
                 and not belowMinWave
                 and not wrongWeapon
+                and not tooFewBullets
                 and not alreadyHave
             then
                 local w = rarityWeight[c.rarity] or 10
