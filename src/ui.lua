@@ -524,9 +524,9 @@ function UI:drawMenu(game)
     love.graphics.setColor(0.8, 0.8, 0.8)
     love.graphics.printf(string.format("Wins: %d    Runs: %d", p.totalWins or 0, p.totalRuns or 0), 20, 72, 400, "left")
     -- Reality Shards counter. Only ONE shard can spawn per run — the next
-    -- uncollected one, gated by its own eldritch threshold. So the counter
-    -- shows progress and the eldritch level needed for the NEXT shard, and
-    -- whether that threshold has been met yet (via lifetime eldritchMax).
+    -- uncollected one, gated by its own eldritch threshold. Shows progress,
+    -- whether a shard is currently active (0 or 1 — spawnable in a run now),
+    -- and what the next threshold is.
     do
         local thrs = require("src.eldritch").SHARD_THRESHOLDS
         local total = #thrs
@@ -538,15 +538,16 @@ function UI:drawMenu(game)
             label = string.format("Reality Shards: %d / %d  (all found)", got, total)
         else
             local nextReq = thrs[got + 1]
-            if eldMax >= nextReq then
-                label = string.format("Reality Shards: %d / %d  (next: eldritch %d — reachable)",
+            local active = (eldMax >= nextReq) and 1 or 0
+            if active == 1 then
+                label = string.format("Reality Shards: %d / %d  (1 active — next shard at eldritch %d)",
                     got, total, nextReq)
             else
-                label = string.format("Reality Shards: %d / %d  (next: eldritch %d)",
+                label = string.format("Reality Shards: %d / %d  (0 active — next shard needs eldritch %d)",
                     got, total, nextReq)
             end
         end
-        love.graphics.printf(label, 20, 96, 620, "left")
+        love.graphics.printf(label, 20, 96, 720, "left")
     end
 end
 

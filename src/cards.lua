@@ -163,7 +163,7 @@ Cards.pool = {
     {id="singularity", name="Singularity Rounds", rarity="legendary", color={0.4,0.1,0.8},
         desc="Pierce 5, chain 2, homing",
         apply=function(p) p.stats.pierce = p.stats.pierce + 5; p.stats.chain = p.stats.chain + 2; p.stats.homing = p.stats.homing + 2 end},
-    {id="bullet_beam", name="Bullet Beam", rarity="legendary", color={1,0.85,0.3}, oncePerRun=true, requiresBullets=2,
+    {id="bullet_beam", name="Bullet Beam", rarity="rare", color={1,0.85,0.3}, oncePerRun=true, requiresBullets=2,
         desc="Perfect aim. 0 spread; every bullet converges on your target instead of fanning out.",
         apply=function(p) p.stats.spread = 0; p.bulletBeam = true end},
 
