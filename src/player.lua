@@ -172,17 +172,34 @@ end
 
 function Player:update(dt, game)
     self.game = game
-    -- Low-HP portal heartbeat: under 25% HP turns on a slow red pulsate;
-    -- clears when HP recovers above 35% (hysteresis so it doesn't flicker).
+    -- Low-HP portal mood: under 25% HP turns the iframe chrome deep red
+    -- with a throbbing heartbeat + vignette so the danger is visible OUT
+    -- of the play area too. Above 35% the mood clears (hysteresis), and
+    -- if the player is deep into an eldritch zone we restore that ambient
+    -- mood so the chrome doesn't just go neutral mid-run.
     if self.hp > 0 and self.maxHp and self.maxHp > 0 then
         local frac = self.hp / self.maxHp
         local Fx = require("src.fx")
         if not self._lowHpFx and frac < 0.25 then
             self._lowHpFx = true
-            Fx.pulsate("#ff3355", 92, 0.32)
+            Fx.mood("#550011", 0.5)
+            Fx.pulsate("#ff3355", 92, 0.4)
+            Fx.vignette(0.55, 1100)
         elseif self._lowHpFx and frac >= 0.35 then
             self._lowHpFx = false
             Fx.pulsate("off")
+            local elv = (self.eldritch and self.eldritch.level) or 0
+            if elv >= 22 then
+                Fx.mood("#220033", 0.6)
+            elseif elv >= 17 then
+                Fx.mood("#2a0a55", 0.52)
+            elseif elv >= 13 then
+                Fx.mood("#220a44", 0.42)
+            elseif elv >= 9 then
+                Fx.mood("#1a0833", 0.28)
+            else
+                Fx.mood("none")
+            end
         end
     end
     -- Aim mode: 0 = position (mouse pointer), 1 = direction (mouse locked,

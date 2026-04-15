@@ -65,9 +65,9 @@ function Voidsea.ascend(game)
     do
         local Fx = require("src.fx")
         Fx.clearAll()
-        Fx.flashbang(1100)
-        Fx.glow("#ffeeaa", 0.75, 2200)
+        Fx.glow("#ffeeaa", 0.9, 2200)
         Fx.calm("#ffeeaa", 0.5)
+        Fx.shake(0.3, 400)
     end
     game.player.swimming = false
     game.state = "victory"

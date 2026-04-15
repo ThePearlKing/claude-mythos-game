@@ -121,16 +121,17 @@ function Eldritch.gainLevel(player, n)
         if crossed(Eldritch.THRESH_TESSERACT or 17) then
             Fx.mood("#2a0a55", 0.52)
             Fx.pulsate("#aa44ff", 36, 0.32)
-            Fx.spread("#9933cc", 1300, 6)
-            Fx.shake(0.7, 400)
+            Fx.glow("#9933cc", 0.75, 1400)
+            Fx.shake(0.6, 380)
         end
         if crossed(Eldritch.THRESH_CTHULHU or 22) then
-            -- Cthulhu wakes. Maximum ambient dread + a single shatter beat.
+            -- Cthulhu wakes. Chrome dread locks in — one shatter beat, then
+            -- a deep ambient mood + 50-bpm pulsate holds forever.
             Fx.shatter(0.95, 1100)
-            Fx.invert(220)
-            Fx.mood("#220033", 0.6)
-            Fx.pulsate("#9933cc", 50, 0.45)
-            Fx.spread("#9933cc", 1500, 8)
+            Fx.mood("#220033", 0.62)
+            Fx.pulsate("#9933cc", 50, 0.5)
+            Fx.vignette(0.7, 1500)
+            Fx.glow("#9933cc", 0.9, 1800)
         end
     end
 
@@ -593,14 +594,14 @@ function Eldritch._updateKingOblit(state, dt, game)
                 require("src.save").save(game.persist)
                 require("src.achievements").fire("king_ending")
                 local Fx = require("src.fx")
+                -- King ending = ultimate run-ending moment. Single shatter
+                -- beat, then a black-out chrome mood with a gold throb so
+                -- the space around the iframe feels crushed by revelation.
                 Fx.shatter(1.0, 1500)
-                Fx.invert(500)
-                Fx.scanlines(1.0, 2200)
-                Fx.flashbang(1000)
-                Fx.fractalBurst("#ffd84a", 1700)
-                Fx.fractalBurst("#7733cc", 1500)
-                Fx.mood("#000000", 0.6)
-                Fx.tint("#ffd84a", 0.5, 1700)
+                Fx.mood("#000000", 0.7)
+                Fx.vignette(0.95, 2000)
+                Fx.pulsate("#ffd84a", 40, 0.6)
+                Fx.glow("#ffd84a", 1.0, 2200)
             end
         end
     end

@@ -359,10 +359,8 @@ function Game:beginWave(w)
     end
 
     local msg = isBoss and "The final enemy approaches..." or (#enemies .. " threats incoming")
+    if shardThisWave then msg = msg .. "    •    1 Reality Shard" end
     self.waveMessage = msg
-    -- Flag for UI layers so they can surface a prominent shard indicator
-    -- (big banner subtitle + persistent HUD line) instead of just an inline
-    -- bullet-point that blends into the threat count.
     self.waveHasShard = shardThisWave
     self.bannerTime = 2.5
     self.waveStartHp = self.player.hp
@@ -398,17 +396,17 @@ function Game:beginWave(w)
     if self.haunted and w == 1 then
         P:text(640, 160, "★ THIS RUN IS HAUNTED ★", {1, 0.7, 0.85}, 4)
         Fx.mood("#3a1145", 0.25)
-        Fx.flicker(0.5, 600)
     end
-    -- Per-wave portal FX. Atmospheric only — no flashes or ripples on
-    -- normal waves (those got annoying fast). Boss waves get a sustained
-    -- crimson dread; shard waves get a soft violet calm.
+    -- Per-wave chrome FX. Ambient only — nothing that overlays the game
+    -- canvas. Boss (OpenClaw) uses a deep-amber "tyrant" palette so it
+    -- doesn't read as low-HP red; shard waves get a soft violet rim glow.
     if isBoss then
-        Fx.mood("#6a0a28", 0.35)
-        Fx.pulsate("#ff3344", 64, 0.35)
+        Fx.mood("#2a1200", 0.38)
+        Fx.pulsate("#ff9933", 58, 0.35)
         Fx.vignette(0.55, 1200)
     elseif shardThisWave then
-        Fx.calm("#a040ff", 0.3)
+        Fx.glow("#a040ff", 0.35, 1600)
+        Fx.mood("#1a0a28", 0.22)
     end
     if self.player.eldritch.level >= Eldritch.THRESH_CTHULHU then
         Audio:playMusic("eldritch")
@@ -474,10 +472,9 @@ function Game:endWave()
         Audio:play("victory")
         Audio:stopMusic()
         Fx.clearAll()
-        Fx.flash("#aaffcc", 500, 0.75)
-        Fx.pulse("#66ff99", 1500)
-        Fx.glow("#66ff99", 0.65, 1800)
-        Fx.calm("#66ff99", 0.4)
+        Fx.glow("#66ff99", 0.75, 2000)
+        Fx.calm("#66ff99", 0.45)
+        Fx.shake(0.25, 300)
         return
     end
 
@@ -532,10 +529,9 @@ function Game:onKill(enemy, source)
             P:text(enemy.x, enemy.y - 40, "BOSS CLEARED", {1, 0.85, 0.2}, 2.5)
             Fx.mood("none")
             Fx.pulsate("off")
-            Fx.flash("#ffd066", 380, 0.7)
-            Fx.shake(0.6, 380)
-            Fx.pulse("#ffaa33", 1300)
-            Fx.glow("#ffaa33", 0.55, 1500)
+            Fx.shake(0.55, 380)
+            Fx.glow("#ffaa33", 0.7, 1800)
+            Fx.calm("#ffaa33", 0.32)
         end
     end
 
@@ -620,11 +616,11 @@ function Game:update(dt)
         Voidsea.enter(self)
         Achievements.fire("voidsea_descent")
         Fx.clearAll()
-        Fx.tint("#0a1a3a", 0.55, 900)
+        Fx.mood("#0a1a3a", 0.4)
         Fx.calm("#1a3a66", 0.45)
-        Fx.glow("#66e0ff", 0.5, 1700)
-        Fx.spread("#66e0ff", 1600, 6)
-        Fx.vignette(0.45, 1300)
+        Fx.glow("#66e0ff", 0.6, 1800)
+        Fx.vignette(0.5, 1400)
+        Fx.shake(0.35, 350)
         return
     end
 
@@ -691,15 +687,18 @@ function Game:update(dt)
         self.endTime = 0
         if p.eldritch and p.eldritch.cthulhu and p.eldritch.cthulhu.phase == "fire" then
             Achievements.fire("cthulhu_consumed")
+            -- Consumed by Cthulhu = death. Shatter once, then deep violet
+            -- ambient dread holds across the chrome.
             Fx.shatter(1.0, 1200)
-            Fx.invert(320)
-            Fx.scanlines(0.9, 1800)
-            Fx.fractalBurst("#7733cc", 1500)
-            Fx.mood("#220033", 0.55)
+            Fx.mood("#220033", 0.6)
+            Fx.vignette(0.85, 1800)
+            Fx.pulsate("#9933cc", 42, 0.55)
+            Fx.glow("#9933cc", 0.9, 1800)
         else
             Fx.shatter(0.85, 700)
-            Fx.invert(160)
-            Fx.mood("#330011", 0.3)
+            Fx.mood("#330011", 0.35)
+            Fx.vignette(0.7, 1400)
+            Fx.glow("#aa2233", 0.7, 1400)
         end
         Fx.pulsate("off")
         Fx.calm("none")
@@ -825,8 +824,8 @@ function Game:update(dt)
                 Save.save(self.persist)
                 Achievements.check(self.persist)
                 Fx.calm("none")
-                Fx.glow("#bb55ff", 0.55, 1300)
-                Fx.spread("#bb55ff", 1100, 6)
+                Fx.glow("#bb55ff", 0.8, 1600)
+                Fx.shake(0.3, 260)
                 -- Lock out further shard spawns for the rest of this run.
                 self._shardCollectedThisRun = true
             end
@@ -1168,18 +1167,25 @@ function Game:draw()
                 love.graphics.setLineWidth(1)
             end
         else
-            -- Distant shimmer: faint violet halo fades in between 600 and 280
-            -- px, telling you a shard is nearby before the crystal reveals.
+            -- Distant purple glow — always visible regardless of distance so
+            -- you can spot the shard from anywhere on the map. Brightens as
+            -- you close in and blooms into a large violet halo.
             local p = self.player
             local dd = math.sqrt((p.x - s.x) ^ 2 + (p.y - s.y) ^ 2)
-            if dd < 600 then
-                local alpha = math.min(0.75, math.max(0, (600 - dd) / 320))
-                local pulse = 0.7 + math.sin(t * 3) * 0.3
-                for rr = 70, 20, -10 do
-                    love.graphics.setColor(0.7, 0.3, 1, 0.09 * alpha * pulse * (1 - rr / 70))
-                    love.graphics.circle("fill", s.x, s.y, rr * pulse)
-                end
+            local pulse = 0.7 + math.sin(t * 2.5) * 0.3
+            -- Proximity ramp: min 0.35 alpha even far away, blooms up close.
+            local proximity = 1 - math.min(1, math.max(0, (dd - 280) / 620))
+            local alpha = 0.35 + 0.55 * proximity
+            -- Bigger halo when farther (beacon feel), tighter when close.
+            local scale = 1 + 0.6 * (1 - proximity)
+            for rr = 110, 24, -12 do
+                local aa = 0.1 * alpha * pulse * (1 - rr / 110)
+                love.graphics.setColor(0.7, 0.3, 1, aa)
+                love.graphics.circle("fill", s.x, s.y, rr * pulse * scale)
             end
+            -- Core pip so it reads as a distant beacon, not just ambient glow.
+            love.graphics.setColor(0.9, 0.6, 1, 0.5 * alpha * pulse)
+            love.graphics.circle("fill", s.x, s.y, 6)
         end
     end
 
@@ -1583,15 +1589,22 @@ function Game:pickCard(index)
     c.apply(self.player)
     table.insert(self.player.cardsTaken, c)
     self:_fireCardAchievement(c.id)
-    -- Card pickups: subtle rim glow only — no flashes. Common/uncommon
-    -- stay completely silent so the chrome doesn't blink on every choice.
+    -- Card pickups: tint the iframe border for a moment. Chrome rim only
+    -- (glow), never overlays the play area.
     local r = c.rarity
-    if r == "legendary" then
-        Fx.glow("#ffaa33", 0.45, 900)
+    if r == "common" then
+        Fx.glow("#f2c05a", 0.4, 600)
+    elseif r == "uncommon" then
+        Fx.glow("#7ad0ff", 0.5, 700)
+    elseif r == "rare" then
+        Fx.glow("#66aaff", 0.6, 900)
+    elseif r == "legendary" then
+        Fx.glow("#ffaa33", 0.75, 1200)
     elseif r == "eldritch" then
-        Fx.glow("#9944cc", 0.5, 1100)
+        Fx.glow("#9944cc", 0.75, 1300)
     elseif r == "cursed" then
-        Fx.tint("#aa3366", 0.25, 600)
+        Fx.glow("#cc3377", 0.65, 1000)
+        Fx.vignette(0.35, 800)
     end
     Audio:play("select")
     P:text(self.player.x, self.player.y, c.name, Cards.rarityColor(c.rarity), 2)
@@ -1622,11 +1635,12 @@ function Game:fireUgnrakBeam()
         shards = (self.persist and self.persist.realityShards) or 0
     end
     if shards >= 6 then
-        -- Ugnrak Beam fires: huge fractal shockwave through the chrome.
+        -- Ugnrak Beam fires: chrome goes full crimson dread for a beat.
         Fx.shake(0.95, 700)
-        Fx.glow("#ff1122", 0.85, 1800)
-        Fx.fractalBurst("#ff1122", 1500)
-        Fx.vignette(0.7, 1600)
+        Fx.glow("#ff1122", 1.0, 2000)
+        Fx.mood("#2a0000", 0.5)
+        Fx.pulsate("#ff1122", 56, 0.5)
+        Fx.vignette(0.75, 1800)
         if self.isCustom then
             self.tempShards = shards - 6
         else
@@ -1687,12 +1701,12 @@ function Game:fireUgnrakBeam()
         self.kingFractalHold = 12
         if p.eldritch then p.eldritch.kingFractal = 1.0 end
         p.invuln = 0
+        -- Backfire = death. Dramatic chrome shatter (it's the run ending).
         Fx.shatter(1.0, 1200)
-        Fx.invert(320)
-        Fx.scanlines(0.95, 2000)
-        Fx.flashbang(900)
-        Fx.fractalBurst("#ff0000", 1500)
         Fx.mood("#220000", 0.6)
+        Fx.vignette(0.85, 1800)
+        Fx.pulsate("#ff1122", 48, 0.55)
+        Fx.glow("#ff1122", 1.0, 2000)
         p:takeDamage(99999, nil, true)
         P:text(640, 200, "INSUFFICIENT SHARDS", {1, 0.2, 0.2}, 4)
         P:text(640, 260, "UGNRAK CLAIMS YOU", {1, 0.3, 0.2}, 4)

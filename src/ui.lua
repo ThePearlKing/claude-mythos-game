@@ -136,17 +136,9 @@ function UI:drawHUD(game)
         end
     end
 
-    -- Persistent in-wave shard indicator: pulses below the wave banner area
-    -- for the whole wave whenever a shard exists on the map, so you always
-    -- know one is out there somewhere.
-    if game.activeShard then
-        local tt = love.timer.getTime()
-        local pulse = 0.6 + math.abs(math.sin(tt * 3)) * 0.4
-        love.graphics.setColor(0.85, 0.45, 1, pulse)
-        love.graphics.setFont(self.bigFont or self.font)
-        love.graphics.printf("★  REALITY SHARD  ★", 0, 78, 1280, "center")
-        love.graphics.setFont(self.font)
-    end
+    -- Shard presence is signalled only via the pre-wave banner text
+    -- ("N threats incoming • 1 Reality Shard") and the in-world shimmer —
+    -- no persistent HUD pulse.
 
     -- Forbidden Tally: glitched eldritch counter in the HUD when the card is active.
     if p.eldritchCounterUnlocked then
