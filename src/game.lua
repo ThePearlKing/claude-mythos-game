@@ -260,6 +260,12 @@ function Game:recordRunResult(isWin)
     g = g * (1 - weight) + runRep * weight
     self.persist.globalRep = math.max(0, math.min(100, g))
     self.persist.globalRepMax = math.max(self.persist.globalRepMax or 50, self.persist.globalRep)
+    -- Persist the run's eldritch peak so a mid-run climb counts toward the
+    -- next shard even after death/quit.
+    local runEld = (self.player.eldritch and self.player.eldritch.level) or 0
+    if runEld > (self.persist.peakEldritchSinceShard or 0) then
+        self.persist.peakEldritchSinceShard = runEld
+    end
     Save.save(self.persist)
     if isWin and self.haunted then Achievements.fire("haunted_clear") end
     Achievements.check(self.persist)
@@ -326,13 +332,18 @@ function Game:beginWave(w)
             local shardWave = math.floor(hashRand(seed, 1) * 20) + 1
             local shardX = 120 + hashRand(seed, 2) * 1040
             local shardY = 120 + hashRand(seed, 3) * 480
-            -- Threshold is a LIFETIME unlock: reaching eldritch `required`
-            -- in any prior run permanently arms this shard. Also counts the
-            -- current-run level so you can still earn a shard in the same
-            -- run you first cross the threshold (as long as shardWave
-            -- hasn't passed yet).
-            local best = math.max(self.persist.eldritchMax or 0,
-                                  self.player.eldritch.level or 0)
+            -- Per-climb arming: the shard requires a FRESH eldritch run since
+            -- the last shard collect. `peakEldritchSinceShard` tracks the
+            -- best in-run eldritch level reached since the previous shard
+            -- pickup (reset to 0 on collection). Current-run level counts
+            -- too, so you can still earn a shard in the same run you first
+            -- cross the threshold if shardWave hasn't passed yet.
+            local curLvl = self.player.eldritch.level or 0
+            if curLvl > (self.persist.peakEldritchSinceShard or 0) then
+                self.persist.peakEldritchSinceShard = curLvl
+                Save.save(self.persist)
+            end
+            local best = math.max(self.persist.peakEldritchSinceShard or 0, curLvl)
             local levelOK = best >= required
             if levelOK and w == shardWave then
                 self.activeShard = {x = shardX, y = shardY, life = 30, t = 0, visible = false}
@@ -580,6 +591,13 @@ function Game:update(dt)
 
     -- Eldritch update
     Eldritch.update(self.player.eldritch, dt, self)
+    -- Track the peak eldritch reached since the last shard collect. Drives
+    -- per-climb shard arming (see beginWave). Updated in-memory each tick;
+    -- persisted at wave boundaries and run end, not every frame.
+    local curLvl = self.player.eldritch.level or 0
+    if self.persist and curLvl > (self.persist.peakEldritchSinceShard or 0) then
+        self.persist.peakEldritchSinceShard = curLvl
+    end
 
     -- Haunted: shrimp spirits drift in mid-wave
     if self.haunted and self.state == "wave" then
@@ -748,6 +766,9 @@ function Game:update(dt)
                 self.tempShards = (self.tempShards or 0) + 1
             else
                 self.persist.realityShards = (self.persist.realityShards or 0) + 1
+                -- Per-climb: clearing the peak means the next shard requires a
+                -- brand-new eldritch climb to re-arm.
+                self.persist.peakEldritchSinceShard = 0
                 Save.save(self.persist)
                 Achievements.check(self.persist)
                 -- Lock out further shard spawns for the rest of this run.

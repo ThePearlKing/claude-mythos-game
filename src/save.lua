@@ -37,6 +37,7 @@ local function readPath(path)
         bestStreak = 0,
         totalWins = 0,
         totalRuns = 0,
+        peakEldritchSinceShard = 0,
     }
     if love.filesystem.getInfo(path) then
         local content = love.filesystem.read(path)

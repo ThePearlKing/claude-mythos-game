@@ -535,7 +535,10 @@ function UI:drawMenu(game)
         local thrs = Eldritch.SHARD_THRESHOLDS
         local total = #thrs
         local got = p.realityShards or 0
-        local eldMax = p.eldritchMax or 0
+        -- Per-climb arming: the shard is active only if the player's eldritch
+        -- peak since the LAST shard collect has reached the next threshold.
+        -- Reaching it in a prior run is fine; the counter resets on pickup.
+        local peak = p.peakEldritchSinceShard or 0
         love.graphics.setColor(0.85, 0.4, 1)
         local label
         if got >= total then
@@ -547,7 +550,7 @@ function UI:drawMenu(game)
             local seed = slot * 9973 + shardIdx * 311
             local v = math.sin(seed * 12.9898 + 78.233) * 43758.5453
             local shardWave = math.floor((v - math.floor(v)) * 20) + 1
-            if eldMax >= nextReq then
+            if peak >= nextReq then
                 label = string.format(
                     "Reality Shards: %d / %d  (1 active — next unlocked on %d)",
                     got, total, shardWave)
