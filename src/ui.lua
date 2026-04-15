@@ -3807,13 +3807,6 @@ function UI:drawWaveBanner(game)
     else
         love.graphics.printf(game.waveMessage or "", 0, 370, 1280, "center")
     end
-    if game.waveHasShard then
-        local pulse = 0.75 + math.abs(math.sin(love.timer.getTime() * 3.5)) * 0.25
-        love.graphics.setFont(self.bigFont)
-        love.graphics.setColor(0.85, 0.45, 1, a * pulse)
-        love.graphics.printf("★  REALITY SHARD ON THIS WAVE  ★", 0, 400, 1280, "center")
-        love.graphics.setFont(self.font)
-    end
 end
 
 function UI:drawGameOver(game)
