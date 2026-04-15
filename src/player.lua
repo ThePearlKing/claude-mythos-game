@@ -518,22 +518,55 @@ end
 
 function Player:fireLaser(game, dt)
     local s = self.stats
-    local widthMult = self.laserWidthMult or 1
+    -- Width scales with bulletSize so "Bigger Bullets" makes the beam thicker.
+    local baseWidth = (self.laserWidthMult or 1) * math.max(0.5, (s.bulletSize or 5) / 5)
     local dmgMult = self.laserDmgMult or 1
-    local beams = self.laserBeams or 1
-    local hitRadiusMult = widthMult  -- wider beam = larger hit radius
+    -- Beam count combines bullets stat with Prism Split bonus (additive so Prism
+    -- still grants its +2 on top of any bullet-count cards).
+    local beams = math.max(1, s.bullets or 1) + math.max(0, (self.laserBeams or 1) - 1)
+    -- Faster bullets → faster damage tick. Clamped so slow ammo still does work.
+    local speedMult = math.max(0.6, (s.bulletSpeed or 700) / 700)
+    -- Spread fan uses player's bullet spread so Stabilizer/Scatter both apply.
+    local spreadAng = math.max(0.05, s.spread or 0.05)
     self.laserEnds = {}
+    local primaryIdx = math.ceil(beams / 2)
 
     for beamIdx = 1, beams do
+        local primary = (beamIdx == primaryIdx)
+        -- Extras: 33% damage, ~55% width = "less concentrated" per spec.
+        local beamDmg = primary and 1 or 0.33
+        local beamWidth = baseWidth * (primary and 1 or 0.55)
+        local hitRadiusMult = beamWidth
+
         local angleOffset = 0
         if beams > 1 then
-            angleOffset = (beamIdx - (beams + 1) / 2) * 0.12
+            angleOffset = (beamIdx - (beams + 1) / 2) * (spreadAng * 2.0)
         end
-        local ang = self.angle + angleOffset
+        -- Wobble: Scrambled Aim wiggles the beam angle each frame.
+        local wobble = 0
+        if self.wobbleShots then
+            local lt = love.timer.getTime()
+            wobble = (math.sin(lt * 22 + beamIdx * 1.7) + math.sin(lt * 31 + beamIdx)) * 0.05
+        end
+        -- Homing: bend the beam toward nearest enemy.
+        local homingBend = 0
+        if (s.homing or 0) > 0 then
+            local nearest, nd = nil, 1e12
+            for _, e in ipairs(game.enemies) do
+                local d = (e.x - self.x) ^ 2 + (e.y - self.y) ^ 2
+                if d < nd then nd = d; nearest = e end
+            end
+            if nearest then
+                local desired = math.atan2(nearest.y - self.y, nearest.x - self.x)
+                local cur = self.angle + angleOffset
+                local diff = ((desired - cur + math.pi) % (math.pi * 2)) - math.pi
+                homingBend = diff * math.min(0.5, (s.homing or 0) * 0.06)
+            end
+        end
+        local ang = self.angle + angleOffset + wobble + homingBend
         local sx, sy = self.x, self.y
         local dx, dy = math.cos(ang), math.sin(ang)
-        local hitEnemy = nil
-        local hitDist = 2000
+        local hitEnemy, hitDist = nil, 2000
         for _, e in ipairs(game.enemies) do
             local ex, ey = e.x - sx, e.y - sy
             local t = ex * dx + ey * dy
@@ -546,9 +579,11 @@ function Player:fireLaser(game, dt)
                 end
             end
         end
-        table.insert(self.laserEnds, {sx + dx * hitDist, sy + dy * hitDist})
+        local endX, endY = sx + dx * hitDist, sy + dy * hitDist
+        table.insert(self.laserEnds, {endX, endY, width = beamWidth, primary = primary})
+
         if hitEnemy then
-            local base = s.damage * dmgMult * dt * s.fireRate * 2
+            local base = s.damage * dmgMult * beamDmg * dt * s.fireRate * 2 * speedMult
             local isCrit = self.laserAlwaysCrit or (math.random() < s.crit * dt * 8)
             if isCrit then base = base * s.critMult end
             hitEnemy:damage(base, self, game, isCrit)
@@ -579,12 +614,108 @@ function Player:fireLaser(game, dt)
                     end
                 end
             end
+
+            -- Bullet-card on-hit effects fire on the PRIMARY beam only and are
+            -- rate-limited (laser ticks every frame; we only want occasional
+            -- bursts so explosive/chain/split don't trigger 60x/sec).
+            if primary then
+                if (s.explosive or 0) > 0 then
+                    self._laserExplodeTimer = (self._laserExplodeTimer or 0) - dt
+                    if self._laserExplodeTimer <= 0 then
+                        self._laserExplodeTimer = 0.25
+                        local r = (s.explodeRadius or 110) * 0.7
+                        table.insert(game.shockwaves or {},
+                            {x = endX, y = endY, r = 0, max = r, life = 0.3, color = {1, 0.55, 0.15}})
+                        P:spawn(endX, endY, 18, {1, 0.6, 0.1}, 200, 0.3, 4)
+                        for _, e in ipairs(game.enemies) do
+                            if e ~= hitEnemy then
+                                local d2 = (e.x - endX) ^ 2 + (e.y - endY) ^ 2
+                                if d2 < r * r then
+                                    e:damage(s.damage * dmgMult * 0.6, self, game, false)
+                                end
+                            end
+                        end
+                    end
+                end
+                if (s.chain or 0) > 0 then
+                    self._laserChainTimer = (self._laserChainTimer or 0) - dt
+                    if self._laserChainTimer <= 0 then
+                        self._laserChainTimer = 0.18
+                        local chained = 0
+                        local src = hitEnemy
+                        local hitSet = {[hitEnemy] = true}
+                        while chained < s.chain do
+                            local nearest, nd = nil, (s.chainRange or 150) ^ 2
+                            for _, e in ipairs(game.enemies) do
+                                if not hitSet[e] then
+                                    local d = (e.x - src.x) ^ 2 + (e.y - src.y) ^ 2
+                                    if d < nd then nd = d; nearest = e end
+                                end
+                            end
+                            if not nearest then break end
+                            for i = 1, 6 do
+                                local tt = i / 6
+                                P:spawn(src.x + (nearest.x - src.x) * tt + math.random(-4, 4),
+                                        src.y + (nearest.y - src.y) * tt + math.random(-4, 4),
+                                        1, {1, 0.6, 0.5}, 30, 0.18, 2)
+                            end
+                            nearest:damage(s.damage * dmgMult * 0.5, self, game, false)
+                            hitSet[nearest] = true
+                            src = nearest
+                            chained = chained + 1
+                        end
+                    end
+                end
+                if (s.split or 0) > 0 then
+                    self._laserSplitTimer = (self._laserSplitTimer or 0) - dt
+                    if self._laserSplitTimer <= 0 then
+                        self._laserSplitTimer = 0.18
+                        for i = 1, 3 do
+                            local sa = math.random() * math.pi * 2
+                            local b = Bullet.new(endX, endY,
+                                math.cos(sa) * 380, math.sin(sa) * 380,
+                                s.damage * dmgMult * 0.4, true)
+                            b.size = math.max(3, (s.bulletSize or 5) * 0.6)
+                            b.owner = self
+                            b.color = {1, 0.6, 0.4}
+                            table.insert(game.bullets, b)
+                        end
+                    end
+                end
+                if (s.bounce or 0) > 0 then
+                    self._laserBounceTimer = (self._laserBounceTimer or 0) - dt
+                    if self._laserBounceTimer <= 0 then
+                        self._laserBounceTimer = 0.12
+                        local maxBounces = math.min(s.bounce, 2)
+                        local bsx, bsy = endX, endY
+                        local bouncedSet = {[hitEnemy] = true}
+                        for n = 1, maxBounces do
+                            local nearest, nd = nil, 350 * 350
+                            for _, e in ipairs(game.enemies) do
+                                if not bouncedSet[e] then
+                                    local d = (e.x - bsx) ^ 2 + (e.y - bsy) ^ 2
+                                    if d < nd then nd = d; nearest = e end
+                                end
+                            end
+                            if not nearest then break end
+                            nearest:damage(s.damage * dmgMult * 0.4, self, game, false)
+                            table.insert(self.laserEnds, {
+                                nearest.x, nearest.y,
+                                width = beamWidth * 0.7, primary = false,
+                                fromX = bsx, fromY = bsy,
+                            })
+                            bouncedSet[nearest] = true
+                            bsx, bsy = nearest.x, nearest.y
+                        end
+                    end
+                end
+            end
+
             if math.random() < 0.2 then
                 P:spawn(hitEnemy.x, hitEnemy.y, 2, {1, 0.4, 0.2}, 120, 0.3, 2)
             end
         end
     end
-    -- Keep legacy single-end field for compatibility with draw
     self.laserEnd = self.laserEnds[1]
 end
 
@@ -2950,25 +3081,33 @@ function Player:draw()
         end
     end
 
-    -- Laser beam(s) — render all beams when Prism Split is active
+    -- Laser beam(s) — render every beam (primary + extras + bounce arcs).
+    -- Each entry stores its own width and optional from-point so extras can be
+    -- thinner ("less concentrated") and bounce arcs originate from impact.
     if self.laserActive and self.laserEnds then
-        local widthMult = self.laserWidthMult or 1
-        local outer = 6 * widthMult
-        local inner = 2 * widthMult
         local boost = self.laserDmgMult or 1
-        local outerColor = {1, 0.3, 0.2, 0.7 * math.min(1, boost)}
-        if boost > 1 then outerColor = {1, 0.8, 0.3, 0.85} end
         for _, endPt in ipairs(self.laserEnds) do
+            local w = endPt.width or (self.laserWidthMult or 1)
+            local outer = 6 * w
+            local inner = 2 * w
+            local primary = endPt.primary
+            local fromX = endPt.fromX or self.x
+            local fromY = endPt.fromY or self.y
+            local outerColor
+            if boost > 1 then
+                outerColor = {1, 0.8, 0.3, primary and 0.85 or 0.55}
+            else
+                outerColor = {1, 0.3, 0.2, (primary and 0.7 or 0.45) * math.min(1, boost)}
+            end
             love.graphics.setColor(outerColor)
             love.graphics.setLineWidth(outer)
-            love.graphics.line(self.x, self.y, endPt[1], endPt[2])
-            love.graphics.setColor(1, 0.9, 0.8, 1)
+            love.graphics.line(fromX, fromY, endPt[1], endPt[2])
+            love.graphics.setColor(1, 0.9, 0.8, primary and 1 or 0.7)
             love.graphics.setLineWidth(inner)
-            love.graphics.line(self.x, self.y, endPt[1], endPt[2])
-            -- Core bright line
-            love.graphics.setColor(1, 1, 1, 1)
+            love.graphics.line(fromX, fromY, endPt[1], endPt[2])
+            love.graphics.setColor(1, 1, 1, primary and 1 or 0.8)
             love.graphics.setLineWidth(math.max(1, inner * 0.4))
-            love.graphics.line(self.x, self.y, endPt[1], endPt[2])
+            love.graphics.line(fromX, fromY, endPt[1], endPt[2])
         end
     end
 
