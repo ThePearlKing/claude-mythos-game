@@ -524,11 +524,15 @@ function UI:drawMenu(game)
     love.graphics.setColor(0.8, 0.8, 0.8)
     love.graphics.printf(string.format("Wins: %d    Runs: %d", p.totalWins or 0, p.totalRuns or 0), 20, 72, 400, "left")
     -- Reality Shards counter. Only ONE shard can spawn per run — the next
-    -- uncollected one, gated by its own eldritch threshold. Shows progress,
-    -- whether a shard is currently active (0 or 1 — spawnable in a run now),
-    -- and what the next threshold is.
+    -- uncollected one, pinned to a fixed wave (1-20, deterministic from slot
+    -- + shardIdx) and gated by an in-run eldritch threshold. "1 active" means
+    -- your lifetime eldritchMax is already at/above the threshold; you still
+    -- have to reach it again in-run by the shard's wave for it to actually
+    -- spawn.
     do
-        local thrs = require("src.eldritch").SHARD_THRESHOLDS
+        local Eldritch = require("src.eldritch")
+        local Save = require("src.save")
+        local thrs = Eldritch.SHARD_THRESHOLDS
         local total = #thrs
         local got = p.realityShards or 0
         local eldMax = p.eldritchMax or 0
@@ -537,17 +541,18 @@ function UI:drawMenu(game)
         if got >= total then
             label = string.format("Reality Shards: %d / %d  (all found)", got, total)
         else
-            local nextReq = thrs[got + 1]
+            local shardIdx = got + 1
+            local nextReq = thrs[shardIdx]
+            local slot = Save.getActiveSlot()
+            local seed = slot * 9973 + shardIdx * 311
+            local v = math.sin(seed * 12.9898 + 78.233) * 43758.5453
+            local shardWave = math.floor((v - math.floor(v)) * 20) + 1
             local active = (eldMax >= nextReq) and 1 or 0
-            if active == 1 then
-                label = string.format("Reality Shards: %d / %d  (1 active — next shard at eldritch %d)",
-                    got, total, nextReq)
-            else
-                label = string.format("Reality Shards: %d / %d  (0 active — next shard needs eldritch %d)",
-                    got, total, nextReq)
-            end
+            label = string.format(
+                "Reality Shards: %d / %d  (%d active — next on wave %d, needs eldritch %d in-run)",
+                got, total, active, shardWave, nextReq)
         end
-        love.graphics.printf(label, 20, 96, 720, "left")
+        love.graphics.printf(label, 20, 96, 900, "left")
     end
 end
 
