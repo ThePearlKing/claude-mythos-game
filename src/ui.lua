@@ -547,10 +547,15 @@ function UI:drawMenu(game)
             local seed = slot * 9973 + shardIdx * 311
             local v = math.sin(seed * 12.9898 + 78.233) * 43758.5453
             local shardWave = math.floor((v - math.floor(v)) * 20) + 1
-            local active = (eldMax >= nextReq) and 1 or 0
-            label = string.format(
-                "Reality Shards: %d / %d  (%d active — next on wave %d, needs eldritch %d in-run)",
-                got, total, active, shardWave, nextReq)
+            if eldMax >= nextReq then
+                label = string.format(
+                    "Reality Shards: %d / %d  (1 active — next on wave %d)",
+                    got, total, shardWave)
+            else
+                label = string.format(
+                    "Reality Shards: %d / %d  (0 active — reach eldritch %d to unlock, spawns on wave %d)",
+                    got, total, nextReq, shardWave)
+            end
         end
         love.graphics.printf(label, 20, 96, 900, "left")
     end

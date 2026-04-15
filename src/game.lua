@@ -326,7 +326,14 @@ function Game:beginWave(w)
             local shardWave = math.floor(hashRand(seed, 1) * 20) + 1
             local shardX = 120 + hashRand(seed, 2) * 1040
             local shardY = 120 + hashRand(seed, 3) * 480
-            local levelOK = (self.player.eldritch.level or 0) >= required
+            -- Threshold is a LIFETIME unlock: reaching eldritch `required`
+            -- in any prior run permanently arms this shard. Also counts the
+            -- current-run level so you can still earn a shard in the same
+            -- run you first cross the threshold (as long as shardWave
+            -- hasn't passed yet).
+            local best = math.max(self.persist.eldritchMax or 0,
+                                  self.player.eldritch.level or 0)
+            local levelOK = best >= required
             if levelOK and w == shardWave then
                 self.activeShard = {x = shardX, y = shardY, life = 30, t = 0, visible = false}
                 shardThisWave = true
