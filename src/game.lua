@@ -309,8 +309,11 @@ function Game:beginWave(w)
     end
 
     local msg = isBoss and "The final enemy approaches..." or (#enemies .. " threats incoming")
-    if shardThisWave then msg = msg .. "    •    1 Reality Shard" end
     self.waveMessage = msg
+    -- Flag for UI layers so they can surface a prominent shard indicator
+    -- (big banner subtitle + persistent HUD line) instead of just an inline
+    -- bullet-point that blends into the threat count.
+    self.waveHasShard = shardThisWave
     self.bannerTime = 2.5
     self.waveStartHp = self.player.hp
     self.waveDamageTaken = 0
@@ -1014,37 +1017,50 @@ function Game:draw()
         require("src.churglyfight").draw(self)
     end
 
-    -- Reality Shard (purple crystal) — drawn below HUD, only visible when
-    -- the player is close. Spins slowly with a pulsing violet halo.
-    if self.activeShard and self.activeShard.visible then
+    -- Reality Shard — close-up crystal when within reveal radius, distant
+    -- violet shimmer fading in with proximity when farther away so you get
+    -- a visual hint before the full crystal reveals.
+    if self.activeShard then
         local s = self.activeShard
         local t = s.t or 0
-        local pulse = 0.75 + math.sin(t * 4) * 0.25
-        love.graphics.push()
-        love.graphics.translate(s.x, s.y)
-        love.graphics.rotate(t * 0.6)
-        -- Outer violet halo
-        for rr = 34, 14, -5 do
-            love.graphics.setColor(0.6, 0.2, 1, 0.14 * pulse * (1 - rr / 34))
-            love.graphics.circle("fill", 0, 0, rr * pulse)
-        end
-        -- Crystal diamond body
-        love.graphics.setColor(0.85, 0.5, 1, 0.95)
-        love.graphics.polygon("fill", 0, -16, 9, 0, 0, 16, -9, 0)
-        love.graphics.setColor(1, 0.85, 1, 1)
-        love.graphics.polygon("fill", 0, -9, 4, 0, 0, 9, -4, 0)
-        love.graphics.setColor(1, 1, 1, 1)
-        love.graphics.setLineWidth(2)
-        love.graphics.polygon("line", 0, -16, 9, 0, 0, 16, -9, 0)
-        love.graphics.setLineWidth(1)
-        love.graphics.pop()
-        -- Life countdown ring (last 5s flashes)
-        if s.life < 5 then
-            local flash = (math.sin(s.t * 12) > 0) and 1 or 0.3
-            love.graphics.setColor(1, 0.5, 1, 0.6 * flash)
+        if s.visible then
+            local pulse = 0.75 + math.sin(t * 4) * 0.25
+            love.graphics.push()
+            love.graphics.translate(s.x, s.y)
+            love.graphics.rotate(t * 0.6)
+            for rr = 34, 14, -5 do
+                love.graphics.setColor(0.6, 0.2, 1, 0.14 * pulse * (1 - rr / 34))
+                love.graphics.circle("fill", 0, 0, rr * pulse)
+            end
+            love.graphics.setColor(0.85, 0.5, 1, 0.95)
+            love.graphics.polygon("fill", 0, -16, 9, 0, 0, 16, -9, 0)
+            love.graphics.setColor(1, 0.85, 1, 1)
+            love.graphics.polygon("fill", 0, -9, 4, 0, 0, 9, -4, 0)
+            love.graphics.setColor(1, 1, 1, 1)
             love.graphics.setLineWidth(2)
-            love.graphics.circle("line", s.x, s.y, 24 + (5 - s.life) * 2)
+            love.graphics.polygon("line", 0, -16, 9, 0, 0, 16, -9, 0)
             love.graphics.setLineWidth(1)
+            love.graphics.pop()
+            if s.life < 5 then
+                local flash = (math.sin(s.t * 12) > 0) and 1 or 0.3
+                love.graphics.setColor(1, 0.5, 1, 0.6 * flash)
+                love.graphics.setLineWidth(2)
+                love.graphics.circle("line", s.x, s.y, 24 + (5 - s.life) * 2)
+                love.graphics.setLineWidth(1)
+            end
+        else
+            -- Distant shimmer: faint violet halo fades in between 600 and 280
+            -- px, telling you a shard is nearby before the crystal reveals.
+            local p = self.player
+            local dd = math.sqrt((p.x - s.x) ^ 2 + (p.y - s.y) ^ 2)
+            if dd < 600 then
+                local alpha = math.min(0.75, math.max(0, (600 - dd) / 320))
+                local pulse = 0.7 + math.sin(t * 3) * 0.3
+                for rr = 70, 20, -10 do
+                    love.graphics.setColor(0.7, 0.3, 1, 0.09 * alpha * pulse * (1 - rr / 70))
+                    love.graphics.circle("fill", s.x, s.y, rr * pulse)
+                end
+            end
         end
     end
 

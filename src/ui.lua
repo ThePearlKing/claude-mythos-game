@@ -136,8 +136,17 @@ function UI:drawHUD(game)
         end
     end
 
-    -- (Reality Shards counter is shown only on the title/menu stats panel,
-    -- not during gameplay — the in-wave count is deliberately mysterious.)
+    -- Persistent in-wave shard indicator: pulses below the wave banner area
+    -- for the whole wave whenever a shard exists on the map, so you always
+    -- know one is out there somewhere.
+    if game.activeShard then
+        local tt = love.timer.getTime()
+        local pulse = 0.6 + math.abs(math.sin(tt * 3)) * 0.4
+        love.graphics.setColor(0.85, 0.45, 1, pulse)
+        love.graphics.setFont(self.bigFont or self.font)
+        love.graphics.printf("★  REALITY SHARD  ★", 0, 78, 1280, "center")
+        love.graphics.setFont(self.font)
+    end
 
     -- Forbidden Tally: glitched eldritch counter in the HUD when the card is active.
     if p.eldritchCounterUnlocked then
@@ -3788,6 +3797,13 @@ function UI:drawWaveBanner(game)
         love.graphics.printf("OPENCLAW - THE TYRANT LOBSTER", 0, 370, 1280, "center")
     else
         love.graphics.printf(game.waveMessage or "", 0, 370, 1280, "center")
+    end
+    if game.waveHasShard then
+        local pulse = 0.75 + math.abs(math.sin(love.timer.getTime() * 3.5)) * 0.25
+        love.graphics.setFont(self.bigFont)
+        love.graphics.setColor(0.85, 0.45, 1, a * pulse)
+        love.graphics.printf("★  REALITY SHARD ON THIS WAVE  ★", 0, 400, 1280, "center")
+        love.graphics.setFont(self.font)
     end
 end
 
