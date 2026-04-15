@@ -475,12 +475,26 @@ function Player:shoot(game)
 
     local bullets = cap(s.bullets, "bullets")
     -- Bullet Beam convergence helper: fans spawn points perpendicular to aim,
-    -- then angles each bullet at a distant target so they all meet at a point.
+    -- then angles each bullet at a target so they all meet at one point.
+    -- In normal (position) aim mode the target is the cursor itself so
+    -- bullets converge exactly where you're pointing; in direction mode
+    -- there's no cursor, so we fall back to a fixed distance ahead.
     local function beamFan(count, perBulletDmg, spacing)
-        local convergeD = 420
         local dx, dy = math.cos(self.angle), math.sin(self.angle)
-        local tx = self.x + dx * convergeD
-        local ty = self.y + dy * convergeD
+        local tx, ty
+        local aimMode = (game.persist and game.persist.aimMode) or 0
+        if aimMode == 0 then
+            tx, ty = love.mouse.getPosition()
+            -- Guard against the rare case of the cursor sitting on the
+            -- player — would produce 0-length vectors / undefined angles.
+            if (tx - self.x) ^ 2 + (ty - self.y) ^ 2 < 32 * 32 then
+                tx = self.x + dx * 420
+                ty = self.y + dy * 420
+            end
+        else
+            tx = self.x + dx * 420
+            ty = self.y + dy * 420
+        end
         for i = 1, count do
             local perp = (i - (count + 1) / 2) * spacing
             local spawnX = self.x + dx * self.r + (-dy) * perp
@@ -556,9 +570,21 @@ function Player:fireRail(game)
     -- Railgun now inherits bullet count (multishot fans), homing, explosive, freeze, burn, chain, crit
     local count = s.bullets
     local beam = self.bulletBeam and count > 1
-    local convergeD = 420
     local dxC, dyC = math.cos(self.angle), math.sin(self.angle)
-    local tx, ty = self.x + dxC * convergeD, self.y + dyC * convergeD
+    local tx, ty
+    if beam then
+        local aimMode = (game.persist and game.persist.aimMode) or 0
+        if aimMode == 0 then
+            tx, ty = love.mouse.getPosition()
+            if (tx - self.x) ^ 2 + (ty - self.y) ^ 2 < 32 * 32 then
+                tx = self.x + dxC * 420
+                ty = self.y + dyC * 420
+            end
+        else
+            tx = self.x + dxC * 420
+            ty = self.y + dyC * 420
+        end
+    end
     for i = 1, count do
         local ang, spawnX, spawnY
         if beam then
