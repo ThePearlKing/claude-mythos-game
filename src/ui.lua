@@ -515,19 +515,31 @@ function UI:drawMenu(game)
     love.graphics.setColor(0.8, 0.8, 0.8)
     love.graphics.printf(string.format("Wins: %d    Runs: %d", p.totalWins or 0, p.totalRuns or 0), 20, 72, 400, "left")
     -- Reality Shards counter (surfaces once you've collected at least one).
-    -- Shows collected / total and how many are still out there to find.
+    -- Shows collected / total, how many are currently within reach (their
+    -- eldritch threshold has been met in a prior run), and how many are still
+    -- locked behind higher eldritch levels. Only the NEXT uncollected shard
+    -- can actually spawn per run, so "within reach" = thresholds met minus
+    -- shards collected.
     if (p.realityShards or 0) > 0 then
-        local total = #(require("src.eldritch").SHARD_THRESHOLDS)
+        local thrs = require("src.eldritch").SHARD_THRESHOLDS
+        local total = #thrs
         local got = p.realityShards
-        local left = math.max(0, total - got)
+        local eldMax = p.eldritchMax or 0
+        local reached = 0
+        for _, t in ipairs(thrs) do if eldMax >= t then reached = reached + 1 end end
+        local withinReach = math.max(0, reached - got)
+        local locked = math.max(0, total - reached)
         love.graphics.setColor(0.85, 0.4, 1)
         local label
-        if left > 0 then
-            label = string.format("Reality Shards: %d / %d  (%d left to find)", got, total, left)
-        else
+        if got >= total then
             label = string.format("Reality Shards: %d / %d  (all found)", got, total)
+        elseif locked == 0 then
+            label = string.format("Reality Shards: %d / %d  (%d active to find)", got, total, withinReach)
+        else
+            label = string.format("Reality Shards: %d / %d  (%d active, %d locked behind eldritch)",
+                got, total, withinReach, locked)
         end
-        love.graphics.printf(label, 20, 96, 520, "left")
+        love.graphics.printf(label, 20, 96, 620, "left")
     end
 end
 
