@@ -514,29 +514,28 @@ function UI:drawMenu(game)
     love.graphics.printf(string.format("Win Streak: %d  (best: %d)", p.winStreak or 0, p.bestStreak or 0), 20, 48, 400, "left")
     love.graphics.setColor(0.8, 0.8, 0.8)
     love.graphics.printf(string.format("Wins: %d    Runs: %d", p.totalWins or 0, p.totalRuns or 0), 20, 72, 400, "left")
-    -- Reality Shards counter. Always visible: shows collected / total, how
-    -- many are currently within reach (their eldritch threshold has been met
-    -- in a prior run), and how many are still locked behind higher eldritch
-    -- levels. Only the NEXT uncollected shard can actually spawn per run, so
-    -- "within reach" = thresholds met minus shards collected.
+    -- Reality Shards counter. Only ONE shard can spawn per run — the next
+    -- uncollected one, gated by its own eldritch threshold. So the counter
+    -- shows progress and the eldritch level needed for the NEXT shard, and
+    -- whether that threshold has been met yet (via lifetime eldritchMax).
     do
         local thrs = require("src.eldritch").SHARD_THRESHOLDS
         local total = #thrs
         local got = p.realityShards or 0
         local eldMax = p.eldritchMax or 0
-        local reached = 0
-        for _, t in ipairs(thrs) do if eldMax >= t then reached = reached + 1 end end
-        local withinReach = math.max(0, reached - got)
-        local locked = math.max(0, total - reached)
         love.graphics.setColor(0.85, 0.4, 1)
         local label
         if got >= total then
             label = string.format("Reality Shards: %d / %d  (all found)", got, total)
-        elseif locked == 0 then
-            label = string.format("Reality Shards: %d / %d  (%d active to find)", got, total, withinReach)
         else
-            label = string.format("Reality Shards: %d / %d  (%d active, %d locked behind eldritch)",
-                got, total, withinReach, locked)
+            local nextReq = thrs[got + 1]
+            if eldMax >= nextReq then
+                label = string.format("Reality Shards: %d / %d  (next: eldritch %d — reachable)",
+                    got, total, nextReq)
+            else
+                label = string.format("Reality Shards: %d / %d  (next: eldritch %d)",
+                    got, total, nextReq)
+            end
         end
         love.graphics.printf(label, 20, 96, 620, "left")
     end
