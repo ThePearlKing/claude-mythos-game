@@ -97,6 +97,29 @@ function Eldritch.gainLevel(player, n)
     local oldLevel = player.eldritch.level
     player.eldritch.level = math.min(Eldritch.MAX_DISPLAY + 4, player.eldritch.level + n)
 
+    -- Portal FX on threshold crossings — escalating dread as you climb.
+    do
+        local Fx = require("src.fx")
+        local newLevel = player.eldritch.level
+        Fx.glow("#7733cc", 0.3, 500)
+        Fx.chroma(0.25, 160)
+        local function crossed(t) return oldLevel < t and newLevel >= t end
+        if crossed(Eldritch.THRESH_DISTORT or 9) then
+            Fx.flash("#5511aa", 280, 0.55); Fx.chroma(0.6, 280)
+        end
+        if crossed(Eldritch.THRESH_GHOSTS or 13) then
+            Fx.shake(0.5, 320); Fx.vignette(0.5, 900); Fx.tint("#220044", 0.4, 700)
+        end
+        if crossed(Eldritch.THRESH_TESSERACT or 17) then
+            Fx.shatter(0.7, 700); Fx.scanlines(0.6, 1200)
+        end
+        if crossed(Eldritch.THRESH_CTHULHU or 22) then
+            Fx.shatter(0.95, 1100); Fx.invert(220)
+            Fx.mood("#220033", 0.5)
+            Fx.pulsate("#9933cc", 50, 0.4)
+        end
+    end
+
     -- (Reality Shard spawning is NOT triggered here anymore. See
     -- Game:beginWave — shards are deterministic per save slot + shard
     -- index, with the threshold check gated by persist.realityShards.)
@@ -555,6 +578,14 @@ function Eldritch._updateKingOblit(state, dt, game)
                 game.persist.kingEndingSeen = 1
                 require("src.save").save(game.persist)
                 require("src.achievements").fire("king_ending")
+                local Fx = require("src.fx")
+                Fx.shatter(1.0, 1500)
+                Fx.invert(500)
+                Fx.scanlines(1.0, 2200)
+                Fx.chroma(0.95, 1100)
+                Fx.flicker(0.85, 1100)
+                Fx.mood("#000000", 0.6)
+                Fx.tint("#ffd84a", 0.5, 1500)
             end
         end
     end

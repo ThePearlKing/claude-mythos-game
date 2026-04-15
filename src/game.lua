@@ -13,6 +13,7 @@ local Playlist = require("src.playlist")
 local Aesthetics = require("src.aesthetics")
 local Voidsea = require("src.voidsea")
 local Achievements = require("src.achievements")
+local Fx = require("src.fx")
 
 local Game = {}
 
@@ -170,6 +171,7 @@ function Game:startRun(customConfig)
     self.haunted = (math.random() < 0.02) and not customConfig
     self.shrimpTimer = 0
     self:resetGame()
+    Fx.clearAll()
     self.state = "wave"
     self:beginWave((self.wave or 0) + 1)
     Audio:playMusic("normal")
@@ -391,6 +393,22 @@ function Game:beginWave(w)
     Audio:play("wave")
     if self.haunted and w == 1 then
         P:text(640, 160, "★ THIS RUN IS HAUNTED ★", {1, 0.7, 0.85}, 4)
+        Fx.mood("#3a1145", 0.25)
+        Fx.flicker(0.5, 600)
+    end
+    -- Per-wave portal FX
+    if isBoss then
+        Fx.mood("#6a0a28", 0.32)
+        Fx.pulsate("#ff3344", 70, 0.4)
+        Fx.vignette(0.55, 900)
+        Fx.flash("#ff3344", 240, 0.55)
+        Fx.shake(0.45, 350)
+    elseif shardThisWave then
+        Fx.calm("#a040ff", 0.28)
+        Fx.glow("#a040ff", 0.45, 1300)
+        Fx.ripple("#a040ff", 0.5, 0.5, 1100)
+    else
+        Fx.ripple("#9aa4ff", 0.5, 0.5, 600)
     end
     if self.player.eldritch.level >= Eldritch.THRESH_CTHULHU then
         Audio:playMusic("eldritch")
@@ -455,7 +473,22 @@ function Game:endWave()
         self:recordRunResult(true)
         Audio:play("victory")
         Audio:stopMusic()
+        Fx.clearAll()
+        Fx.flash("#aaffcc", 500, 0.75)
+        Fx.pulse("#66ff99", 1500)
+        Fx.glow("#66ff99", 0.65, 1800)
+        Fx.calm("#66ff99", 0.4)
         return
+    end
+
+    -- Light per-wave-clear flourish (skip on boss waves; their clear FX
+    -- fires from the boss-kill site instead).
+    if not self.isBossWave then
+        if self.waveDamageTaken == 0 then
+            Fx.pulse("#ccffdd", 700)
+        else
+            Fx.ripple("#88ccff", 0.5, 0.55, 500)
+        end
     end
 
     -- Offer cards
@@ -503,6 +536,12 @@ function Game:onKill(enemy, source)
             Save.save(self.persist)
             Achievements.check(self.persist)
             P:text(enemy.x, enemy.y - 40, "BOSS CLEARED", {1, 0.85, 0.2}, 2.5)
+            Fx.mood("none")
+            Fx.pulsate("off")
+            Fx.flash("#ffd066", 380, 0.7)
+            Fx.shake(0.6, 380)
+            Fx.pulse("#ffaa33", 1300)
+            Fx.glow("#ffaa33", 0.55, 1500)
         end
     end
 
@@ -586,6 +625,12 @@ function Game:update(dt)
     if self.player.voidSeaUnlocked and love.keyboard.isDown("s") and self.player.y >= (720 - self.player.r - 2) then
         Voidsea.enter(self)
         Achievements.fire("voidsea_descent")
+        Fx.clearAll()
+        Fx.tint("#0a1a3a", 0.55, 800)
+        Fx.calm("#1a3a66", 0.4)
+        Fx.pulse("#66e0ff", 1400)
+        Fx.glow("#66e0ff", 0.4, 1500)
+        Fx.vignette(0.4, 1200)
         return
     end
 
@@ -649,7 +694,18 @@ function Game:update(dt)
         self.endTime = 0
         if p.eldritch and p.eldritch.cthulhu and p.eldritch.cthulhu.phase == "fire" then
             Achievements.fire("cthulhu_consumed")
+            Fx.shatter(1.0, 1100)
+            Fx.invert(280)
+            Fx.scanlines(0.85, 1500)
+            Fx.mood("#220033", 0.5)
+        else
+            Fx.shatter(0.9, 700)
+            Fx.invert(180)
+            Fx.flash("#ff3344", 360, 0.7)
+            Fx.mood("#330011", 0.32)
         end
+        Fx.pulsate("off")
+        Fx.calm("none")
         self:recordRunResult(false)
         Audio:play("defeat")
         Audio:stopMusic()
@@ -771,6 +827,12 @@ function Game:update(dt)
                 self.persist.peakEldritchSinceShard = 0
                 Save.save(self.persist)
                 Achievements.check(self.persist)
+                Fx.calm("none")
+                Fx.flash("#ff66ff", 280, 0.6)
+                Fx.pulse("#bb55ff", 900)
+                Fx.glow("#bb55ff", 0.6, 1500)
+                Fx.ripple("#ff99ff", (s.x or 640) / 1280, (s.y or 360) / 720, 1100)
+                Fx.chroma(0.4, 220)
                 -- Lock out further shard spawns for the rest of this run.
                 self._shardCollectedThisRun = true
             end
@@ -1527,6 +1589,22 @@ function Game:pickCard(index)
     c.apply(self.player)
     table.insert(self.player.cardsTaken, c)
     self:_fireCardAchievement(c.id)
+    -- Rarity-tinted portal FX so card picks feel weighty.
+    local r = c.rarity
+    if r == "legendary" then
+        Fx.flash("#ffaa33", 280, 0.55)
+        Fx.glow("#ffaa33", 0.5, 1100)
+        Fx.pulse("#ffaa33", 700)
+    elseif r == "eldritch" then
+        Fx.flash("#9944cc", 260, 0.55)
+        Fx.chroma(0.45, 240)
+        Fx.glow("#9944cc", 0.55, 1200)
+    elseif r == "cursed" then
+        Fx.flash("#aa3366", 260, 0.5)
+        Fx.tint("#aa3366", 0.35, 700)
+    elseif r == "rare" then
+        Fx.flash("#66aaff", 200, 0.4)
+    end
     Audio:play("select")
     P:text(self.player.x, self.player.y, c.name, Cards.rarityColor(c.rarity), 2)
     self:beginWave(self.wave + 1)
@@ -1556,6 +1634,11 @@ function Game:fireUgnrakBeam()
         shards = (self.persist and self.persist.realityShards) or 0
     end
     if shards >= 6 then
+        Fx.flash("#ff1122", 420, 0.9)
+        Fx.shake(0.85, 600)
+        Fx.chroma(0.7, 380)
+        Fx.pulse("#ff1122", 1100)
+        Fx.glow("#ff1122", 0.7, 1500)
         if self.isCustom then
             self.tempShards = shards - 6
         else
@@ -1616,6 +1699,12 @@ function Game:fireUgnrakBeam()
         self.kingFractalHold = 12
         if p.eldritch then p.eldritch.kingFractal = 1.0 end
         p.invuln = 0
+        Fx.shatter(1.0, 1100)
+        Fx.invert(320)
+        Fx.scanlines(0.95, 1800)
+        Fx.flicker(0.85, 800)
+        Fx.chroma(0.85, 700)
+        Fx.mood("#220000", 0.55)
         p:takeDamage(99999, nil, true)
         P:text(640, 200, "INSUFFICIENT SHARDS", {1, 0.2, 0.2}, 4)
         P:text(640, 260, "UGNRAK CLAIMS YOU", {1, 0.3, 0.2}, 4)
@@ -1732,6 +1821,7 @@ function Game:keypressed(key)
         elseif key == "m" then
             self.state = "menu"
             Audio:stopMusic()
+            Fx.clearAll()
         elseif key == "q" then
             love.event.quit()
         end
@@ -1743,10 +1833,12 @@ function Game:keypressed(key)
             self:cashOutInfinite()
             self.state = "menu"
             Audio:stopMusic()
+            Fx.clearAll()
         elseif key == "n" then
             -- Abandon without banking (infinite mode only uses this)
             self.state = "menu"
             Audio:stopMusic()
+            Fx.clearAll()
         elseif key == "q" then
             love.event.quit()
         end
@@ -1879,10 +1971,12 @@ function Game:mousepressed(x, y, button)
                     self:cashOutInfinite()
                     self.state = "menu"
                     Audio:stopMusic()
+                    Fx.clearAll()
                 elseif btn.action == "menu_discard" then
                     -- Abandon the infinite run without recording progress
                     self.state = "menu"
                     Audio:stopMusic()
+                    Fx.clearAll()
                 elseif btn.action == "quit" then
                     love.event.quit()
                 end
@@ -1900,6 +1994,7 @@ function Game:mousepressed(x, y, button)
                 elseif btn.action == "menu" then
                     self.state = "menu"
                     Audio:stopMusic()
+                    Fx.clearAll()
                 elseif btn.action == "quit" then
                     love.event.quit()
                 end

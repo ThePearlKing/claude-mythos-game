@@ -62,6 +62,14 @@ function Voidsea.ascend(game)
     game.persist.slugcrabUnlocked = 1
     require("src.save").save(game.persist)
     require("src.achievements").fire("voidsea_ascent")
+    do
+        local Fx = require("src.fx")
+        Fx.clearAll()
+        Fx.flash("#fff5cc", 600, 0.85)
+        Fx.pulse("#ffeeaa", 1700)
+        Fx.glow("#ffeeaa", 0.7, 2000)
+        Fx.calm("#ffeeaa", 0.5)
+    end
     game.player.swimming = false
     game.state = "victory"
     game.endTime = 0

@@ -119,6 +119,19 @@ function Player:takeDamage(amt, source, unstoppable)
     self.flashTimer = 0.2
     Audio:play("hurt")
     P:spawn(self.x, self.y, 12, {1,0.3,0.3}, 220, 0.5, 3)
+    -- Portal hit FX (skip if HP is already 0 — shatter fires from gameover).
+    if self.hp > 0 then
+        local Fx = require("src.fx")
+        local frac = amt / math.max(1, self.maxHp)
+        if frac >= 0.20 then
+            Fx.flash("#ff3344", 200, 0.7)
+            Fx.shake(0.55, 280)
+            Fx.chroma(0.35, 200)
+        else
+            Fx.flash("#ff3344", 110, 0.35)
+            Fx.shake(0.25, 160)
+        end
+    end
 
     -- Adrenaline trigger
     if self.adrenaline then
@@ -163,6 +176,19 @@ end
 
 function Player:update(dt, game)
     self.game = game
+    -- Low-HP portal heartbeat: under 25% HP turns on a slow red pulsate;
+    -- clears when HP recovers above 35% (hysteresis so it doesn't flicker).
+    if self.hp > 0 and self.maxHp and self.maxHp > 0 then
+        local frac = self.hp / self.maxHp
+        local Fx = require("src.fx")
+        if not self._lowHpFx and frac < 0.25 then
+            self._lowHpFx = true
+            Fx.pulsate("#ff3355", 92, 0.32)
+        elseif self._lowHpFx and frac >= 0.35 then
+            self._lowHpFx = false
+            Fx.pulsate("off")
+        end
+    end
     -- Aim mode: 0 = position (mouse pointer), 1 = direction (mouse locked,
     -- aim follows the last movement vector). Direction mode keeps the angle
     -- from game._dirAim, which main.lua's love.mousemoved updates.

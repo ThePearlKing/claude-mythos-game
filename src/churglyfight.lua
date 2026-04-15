@@ -69,6 +69,15 @@ function Churglyfight.start(game)
     game.enemyBullets = {}
     game.pendingSpawns = {}
     game.shockwaves = {}
+    do
+        local Fx = require("src.fx")
+        Fx.clearAll()
+        Fx.shatter(0.85, 900)
+        Fx.invert(220)
+        Fx.mood("#3a0512", 0.5)
+        Fx.pulsate("#cc0033", 60, 0.45)
+        Fx.vignette(0.65, 1300)
+    end
     -- Clear the King obliteration state + all its ripples/fractals
     if game.player and game.player.eldritch then
         local eld = game.player.eldritch
@@ -135,6 +144,16 @@ local function defeat(game)
     game.persist.churglyDefeated = 1
     game.persist.churglyDefeats = (game.persist.churglyDefeats or 0) + 1
     require("src.achievements").fire("churgly_defeated")
+    do
+        local Fx = require("src.fx")
+        Fx.mood("none")
+        Fx.pulsate("off")
+        Fx.flash("#ffaa55", 600, 0.8)
+        Fx.shake(0.85, 600)
+        Fx.pulse("#ffaa55", 1700)
+        Fx.glow("#ffaa55", 0.7, 2000)
+        Fx.calm("#ffaa55", 0.4)
+    end
     local lvl = game.player.eldritch and game.player.eldritch.level or 0
     game.persist.eldritchMax = math.max(game.persist.eldritchMax or 0, lvl)
     game.persist.winEldritchMax = math.max(game.persist.winEldritchMax or 0, lvl)
