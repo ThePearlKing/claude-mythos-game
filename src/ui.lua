@@ -2254,15 +2254,12 @@ local function drawPreviewCrab(x, y, scale, cosmetics, t)
     -- Render the trail BEHIND the crab.
     drawTrailPreview(x, y, scale, cosmetics.trail, t)
     -- Slug tail preview: only when the "slug" TRAIL is equipped (body-independent).
-    -- Drawn in OUTLINE color (darker shade of the body) so it contrasts with the
-    -- body and reads clearly as a tail. Tapers down-and-back; bounded inside the
-    -- preview box so it can't reach the WEAPON strip below.
+    -- Matches the in-game tail — body-colored fill, no outlines.
     if cosmetics.trail == "slug" then
         love.graphics.push()
         love.graphics.translate(x, y)
         love.graphics.scale(scale, scale)
         local body = Cosmetics.bodyColor(cosmetics)
-        local deep = Cosmetics.outlineColor(cosmetics, body)
         local segs = 14
         for i = segs, 1, -1 do
             local progress = i / segs
@@ -2270,10 +2267,8 @@ local function drawPreviewCrab(x, y, scale, cosmetics, t)
             local wave = math.sin(t * 2 + progress * 3) * (progress * 2.5)
             local tx = -progress * 26 + wave * 0.3
             local ty = 2 + progress * 12 + wave
-            love.graphics.setColor(deep[1], deep[2], deep[3])
+            love.graphics.setColor(body[1], body[2], body[3])
             love.graphics.circle("fill", tx, ty, r)
-            love.graphics.setColor(body[1] * 0.6, body[2] * 0.6, body[3] * 0.6, 0.9)
-            love.graphics.circle("line", tx, ty, r)
         end
         love.graphics.pop()
     end
