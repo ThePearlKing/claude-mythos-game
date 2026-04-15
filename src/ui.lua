@@ -549,12 +549,12 @@ function UI:drawMenu(game)
             local shardWave = math.floor((v - math.floor(v)) * 20) + 1
             if eldMax >= nextReq then
                 label = string.format(
-                    "Reality Shards: %d / %d  (1 active — next on wave %d)",
+                    "Reality Shards: %d / %d  (1 active — next unlocked on %d)",
                     got, total, shardWave)
             else
                 label = string.format(
-                    "Reality Shards: %d / %d  (0 active — reach eldritch %d to unlock, spawns on wave %d)",
-                    got, total, nextReq, shardWave)
+                    "Reality Shards: %d / %d  (0 active — requires eldritch %d)",
+                    got, total, nextReq)
             end
         end
         love.graphics.printf(label, 20, 96, 900, "left")
