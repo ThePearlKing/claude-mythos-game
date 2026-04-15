@@ -61,6 +61,7 @@ function Voidsea.ascend(game)
     -- Win the run as if you finished the final wave.
     game.persist.slugcrabUnlocked = 1
     require("src.save").save(game.persist)
+    require("src.achievements").fire("voidsea_ascent")
     game.player.swimming = false
     game.state = "victory"
     game.endTime = 0

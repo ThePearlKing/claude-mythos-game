@@ -12,6 +12,7 @@ local Difficulty = require("src.difficulty")
 local Playlist = require("src.playlist")
 local Aesthetics = require("src.aesthetics")
 local Voidsea = require("src.voidsea")
+local Achievements = require("src.achievements")
 
 local Game = {}
 
@@ -84,6 +85,7 @@ function Game:load()
         self.frameCanvas = love.graphics.newCanvas(1280, 720)
     end
     self.persist = Save.load()
+    Achievements.check(self.persist)
     -- Apply saved volumes
     Audio.masterVol = self.persist.masterVol or 1.0
     Audio.musicVol  = self.persist.musicVol or 1.0
@@ -106,7 +108,11 @@ function Game:resetGame()
     if cfg.startingReputation then self.player.reputation = cfg.startingReputation end
     if cfg.startingCards and cfg.startingCards > 0 then
         local pool = Cards.pick(cfg.startingCards, 1, self.player)
-        for _, c in ipairs(pool) do c.apply(self.player); table.insert(self.player.cardsTaken, c) end
+        for _, c in ipairs(pool) do
+            c.apply(self.player)
+            table.insert(self.player.cardsTaken, c)
+            self:_fireCardAchievement(c.id)
+        end
     end
     self.enemies = {}
     self.bullets = {}
@@ -167,6 +173,10 @@ function Game:startRun(customConfig)
     self.state = "wave"
     self:beginWave((self.wave or 0) + 1)
     Audio:playMusic("normal")
+    if (not customConfig) and self.persist and self.persist.infiniteMode == 1 then
+        Achievements.fire("infinite_pioneer")
+    end
+    Achievements.check(self.persist)
 end
 
 -- Cashing out of infinite mode: treat a voluntary quit/return-to-menu as a "win"
@@ -181,6 +191,20 @@ function Game:cashOutInfinite()
         local P = require("src.particles")
         P:text(640, 200, "★ PROGRESS BANKED ★", {0.5, 1, 0.6}, 3)
     end
+end
+
+-- Map card ids to achievement keys for the few cards we track. Anything not
+-- in this table gets silently ignored, so adding new cards is free.
+Game._CARD_ACHIEVEMENTS = {
+    glass        = "card_glass_cannon",
+    forbidden    = "card_forbidden",
+    bullet_beam  = "card_bullet_beam",
+    eld_ascend   = "card_ascend_seven",
+}
+
+function Game:_fireCardAchievement(cardId)
+    local key = Game._CARD_ACHIEVEMENTS[cardId]
+    if key then Achievements.fire(key) end
 end
 
 -- Push end-of-run stats into persistent save (rep/streak skipped in custom mode).
@@ -237,6 +261,8 @@ function Game:recordRunResult(isWin)
     self.persist.globalRep = math.max(0, math.min(100, g))
     self.persist.globalRepMax = math.max(self.persist.globalRepMax or 50, self.persist.globalRep)
     Save.save(self.persist)
+    if isWin and self.haunted then Achievements.fire("haunted_clear") end
+    Achievements.check(self.persist)
 end
 
 function Game:beginWave(w)
@@ -368,7 +394,9 @@ function Game:endWave()
     local deficit = math.max(0, (self.waveStartHp or self.player.maxHp) - self.player.hp)
     local dmgFrac = deficit / math.max(1, self.player.maxHp)
     local repChange
-    if self.waveDamageTaken == 0 then repChange = 10       -- truly flawless
+    if self.waveDamageTaken == 0 then
+        repChange = 10                                      -- truly flawless
+        Achievements.fire("flawless_wave")
     elseif dmgFrac <= 0.0 then repChange = 6               -- took hits but fully recovered
     elseif dmgFrac < 0.10 then repChange = 3
     elseif dmgFrac < 0.25 then repChange = 1
@@ -429,6 +457,7 @@ function Game:onKill(enemy, source)
     P:text(enemy.x, enemy.y - 10, "+"..gain, {1,0.9,0.3}, 0.8)
     -- Track lifetime kills (even in custom — unlocks are per-player progression)
     self.persist.totalKills = (self.persist.totalKills or 0) + 1
+    Achievements.check(self.persist)
     if enemy.typeName == "shrimp_spirit" then
         self.persist.shrimpKills = (self.persist.shrimpKills or 0) + 1
     end
@@ -454,6 +483,7 @@ function Game:onKill(enemy, source)
             self.persist.globalRep = math.max(0, math.min(100, g))
             self.persist.globalRepMax = math.max(self.persist.globalRepMax or 50, self.persist.globalRep)
             Save.save(self.persist)
+            Achievements.check(self.persist)
             P:text(enemy.x, enemy.y - 40, "BOSS CLEARED", {1, 0.85, 0.2}, 2.5)
         end
     end
@@ -537,6 +567,7 @@ function Game:update(dt)
     -- Secret: if the player has taken Void Sea and is pressing S at the bottom edge, dive.
     if self.player.voidSeaUnlocked and love.keyboard.isDown("s") and self.player.y >= (720 - self.player.r - 2) then
         Voidsea.enter(self)
+        Achievements.fire("voidsea_descent")
         return
     end
 
@@ -591,6 +622,9 @@ function Game:update(dt)
     if p.hp <= 0 then
         self.state = "gameover"
         self.endTime = 0
+        if p.eldritch and p.eldritch.cthulhu and p.eldritch.cthulhu.phase == "fire" then
+            Achievements.fire("cthulhu_consumed")
+        end
         self:recordRunResult(false)
         Audio:play("defeat")
         Audio:stopMusic()
@@ -708,6 +742,7 @@ function Game:update(dt)
             else
                 self.persist.realityShards = (self.persist.realityShards or 0) + 1
                 Save.save(self.persist)
+                Achievements.check(self.persist)
                 -- Lock out further shard spawns for the rest of this run.
                 self._shardCollectedThisRun = true
             end
@@ -1463,6 +1498,7 @@ function Game:pickCard(index)
     if not c then return end
     c.apply(self.player)
     table.insert(self.player.cardsTaken, c)
+    self:_fireCardAchievement(c.id)
     Audio:play("select")
     P:text(self.player.x, self.player.y, c.name, Cards.rarityColor(c.rarity), 2)
     self:beginWave(self.wave + 1)
@@ -1484,6 +1520,7 @@ end
 function Game:fireUgnrakBeam()
     local p = self.player
     p.ugnrakBeam = false -- spent either way
+    Achievements.fire("ugnrak_fired")
     local shards
     if self.isCustom then
         shards = self.tempShards or 0

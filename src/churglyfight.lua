@@ -134,6 +134,7 @@ local function defeat(game)
     Eldritch.gainLevel(game.player, 15)
     game.persist.churglyDefeated = 1
     game.persist.churglyDefeats = (game.persist.churglyDefeats or 0) + 1
+    require("src.achievements").fire("churgly_defeated")
     local lvl = game.player.eldritch and game.player.eldritch.level or 0
     game.persist.eldritchMax = math.max(game.persist.eldritchMax or 0, lvl)
     game.persist.winEldritchMax = math.max(game.persist.winEldritchMax or 0, lvl)

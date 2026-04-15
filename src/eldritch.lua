@@ -554,6 +554,7 @@ function Eldritch._updateKingOblit(state, dt, game)
             if game.persist then
                 game.persist.kingEndingSeen = 1
                 require("src.save").save(game.persist)
+                require("src.achievements").fire("king_ending")
             end
         end
     end

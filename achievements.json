@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "achievements": [
+    { "key": "first_blood",       "title": "First Blood",            "description": "Defeat your first enemy.",                          "glyph": "🗡️",  "points": 10,  "rarity": "common" },
+    { "key": "kills_100",         "title": "Pincer Practice",        "description": "Defeat 100 enemies.",                                "glyph": "⚔️",  "points": 20,  "rarity": "common" },
+    { "key": "kills_500",         "title": "Carapace Carver",        "description": "Defeat 500 enemies.",                                "glyph": "🔪",  "points": 40,  "rarity": "uncommon" },
+    { "key": "kills_2000",        "title": "The Tide Rises",         "description": "Defeat 2000 enemies.",                               "glyph": "💀",  "points": 80,  "rarity": "rare" },
+    { "key": "kills_5000",        "title": "Apex Crab",              "description": "Defeat 5000 enemies.",                               "glyph": "☠️",  "points": 200, "rarity": "legendary" },
+
+    { "key": "first_win",         "title": "Survivor",               "description": "Win your first run.",                                "glyph": "🏆",  "points": 25,  "rarity": "common" },
+    { "key": "wins_5",            "title": "Veteran",                "description": "Win 5 runs.",                                        "glyph": "🥇",  "points": 50,  "rarity": "uncommon" },
+    { "key": "wins_10",           "title": "Champion",               "description": "Win 10 runs.",                                       "glyph": "👑",  "points": 100, "rarity": "rare" },
+    { "key": "wins_25",           "title": "Mythos Made Flesh",      "description": "Win 25 runs.",                                       "glyph": "🌟",  "points": 200, "rarity": "legendary" },
+
+    { "key": "streak_3",          "title": "On a Roll",              "description": "Reach a 3-win streak.",                              "glyph": "🔥",  "points": 50,  "rarity": "uncommon" },
+    { "key": "streak_5",          "title": "Untouchable",            "description": "Reach a 5-win streak.",                              "glyph": "💥",  "points": 100, "rarity": "rare" },
+    { "key": "streak_10",         "title": "Tidewalker",             "description": "Reach a 10-win streak.",                             "glyph": "⚡",  "points": 250, "rarity": "legendary" },
+
+    { "key": "rep_75",            "title": "Local Hero",             "description": "Reach 75 global reputation.",                        "glyph": "🎖️",  "points": 40,  "rarity": "uncommon" },
+    { "key": "rep_90",            "title": "Beloved",                "description": "Reach 90 global reputation.",                        "glyph": "🏅",  "points": 80,  "rarity": "rare" },
+    { "key": "rep_max",           "title": "Sainted",                "description": "Reach the maximum 100 global reputation.",           "glyph": "💯",  "points": 200, "rarity": "legendary" },
+
+    { "key": "win_hard",          "title": "Hard Boiled",            "description": "Win a run on Hard or above.",                        "glyph": "🌡️",  "points": 75,  "rarity": "uncommon" },
+    { "key": "win_nightmare",     "title": "Sleep Paralysis",        "description": "Win a run on Nightmare or above.",                   "glyph": "😱",  "points": 150, "rarity": "rare" },
+    { "key": "win_apocalypse",    "title": "End of Days",            "description": "Win a run on Apocalypse.",                           "glyph": "🌋",  "points": 300, "rarity": "legendary" },
+
+    { "key": "eldritch_5",        "title": "Curious",                "description": "Reach eldritch level 5 in a run.",                   "glyph": "👁️",  "points": 25,  "rarity": "common" },
+    { "key": "eldritch_10",       "title": "Initiate",               "description": "Reach eldritch level 10 in a run.",                  "glyph": "🔮",  "points": 60,  "rarity": "uncommon" },
+    { "key": "eldritch_15",       "title": "Adept",                  "description": "Reach eldritch level 15 in a run.",                  "glyph": "🧿",  "points": 120, "rarity": "rare" },
+    { "key": "eldritch_20",       "title": "Touched by the Deep",    "description": "Reach eldritch level 20 in a run.",                  "glyph": "🌀",  "points": 180, "rarity": "rare" },
+    { "key": "eldritch_25",       "title": "Beyond the Veil",        "description": "Reach eldritch level 25 in a run.",                  "glyph": "🐙",  "points": 300, "rarity": "legendary" },
+
+    { "key": "shard_first",       "title": "First Fragment",         "description": "Collect your first Reality Shard.",                  "glyph": "🟣",  "points": 30,  "rarity": "uncommon" },
+    { "key": "shard_3",           "title": "Half-Real",              "description": "Collect 3 Reality Shards.",                          "glyph": "🔮",  "points": 100, "rarity": "rare" },
+    { "key": "shard_all",         "title": "Reality Unmade",         "description": "Collect all 6 Reality Shards.",                      "glyph": "💎",  "points": 400, "rarity": "legendary" },
+
+    { "key": "openclaw_slain",    "title": "Tyrant Felled",          "description": "Defeat OpenClaw.",                                   "glyph": "🦞",  "points": 60,  "rarity": "uncommon" },
+    { "key": "ugnrak_fired",      "title": "Crimson Annihilation",   "description": "Fire the Ugnrak Beam.",                              "glyph": "☄️",  "points": 150, "rarity": "rare" },
+    { "key": "cthulhu_consumed",  "title": "Consumed",               "description": "Be obliterated by Claude Cthulhu's beam.",           "glyph": "👁️‍🗨️", "points": 100, "rarity": "rare" },
+    { "key": "voidsea_descent",   "title": "Into the Void",          "description": "Descend into the Void Sea.",                         "glyph": "🌊",  "points": 75,  "rarity": "uncommon" },
+    { "key": "voidsea_ascent",    "title": "Carried Home",           "description": "Win a run by ascending from the Void Sea.",          "glyph": "✨",  "points": 400, "rarity": "legendary" },
+
+    { "key": "churgly_defeated",  "title": "Crafter Unmade",         "description": "Defeat Churgly'nth in single combat.",               "glyph": "🐉",  "points": 500, "rarity": "legendary", "hidden": true },
+    { "key": "king_ending",       "title": "The King Sees",          "description": "Witness the ending only the King knows.",            "glyph": "👑",  "points": 500, "rarity": "legendary", "hidden": true },
+    { "key": "slugcrab_friend",   "title": "Slugcrab Sighting",      "description": "Discover the Slugcrab.",                             "glyph": "🐌",  "points": 150, "rarity": "rare", "hidden": true },
+
+    { "key": "card_glass_cannon", "title": "Glass Cannon",           "description": "Take the Glass Cannon card.",                        "glyph": "💎",  "points": 30,  "rarity": "uncommon" },
+    { "key": "card_forbidden",    "title": "Pact Signed",            "description": "Take the Forbidden Knowledge card.",                 "glyph": "📕",  "points": 30,  "rarity": "uncommon" },
+    { "key": "card_bullet_beam",  "title": "Perfect Aim",            "description": "Take the Bullet Beam card.",                         "glyph": "🌈",  "points": 75,  "rarity": "rare" },
+    { "key": "card_ascend_seven", "title": "Seventh Stair",          "description": "Take Ascend the Seventh Stair.",                     "glyph": "🪜",  "points": 100, "rarity": "rare" },
+
+    { "key": "infinite_pioneer",  "title": "Into Infinity",          "description": "Start an Infinite Mode run.",                        "glyph": "♾️",  "points": 50,  "rarity": "uncommon" },
+    { "key": "deep_dive",         "title": "Deeper Down",            "description": "Reach wave 30 in Infinite Mode.",                    "glyph": "🌌",  "points": 150, "rarity": "rare" },
+    { "key": "haunted_clear",     "title": "Ghost Hunter",           "description": "Win a haunted run.",                                 "glyph": "👻",  "points": 100, "rarity": "rare" },
+    { "key": "flawless_wave",     "title": "Untouched",              "description": "Clear a wave without taking any damage.",            "glyph": "🛡️",  "points": 30,  "rarity": "uncommon" }
+  ]
+}
