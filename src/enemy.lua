@@ -373,6 +373,15 @@ function Enemy:update(dt, game)
             self:damage(p.stats.thorns * dt, p, game)
         end
     end
+    -- Keep all enemies within the playable area so they can't become
+    -- unreachable. Top clamp is 60 so they don't sit inside the HUD topbar.
+    local r = self.r or 0
+    local minX, maxX = r, 1280 - r
+    local minY, maxY = 60 + r, 720 - r
+    if self.x < minX then self.x = minX end
+    if self.x > maxX then self.x = maxX end
+    if self.y < minY then self.y = minY end
+    if self.y > maxY then self.y = maxY end
 end
 
 function Enemy:shoot(game, dx, dy)

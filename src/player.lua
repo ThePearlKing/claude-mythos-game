@@ -479,14 +479,15 @@ function Player:shoot(game)
     -- In normal (position) aim mode the target is the cursor itself so
     -- bullets converge exactly where you're pointing; in direction mode
     -- there's no cursor, so we fall back to a fixed distance ahead.
+    -- Every fan bullet gets very high pierce so if one overkills the target,
+    -- the rest aren't wasted — they keep delivering damage to anything
+    -- still in the convergence line.
     local function beamFan(count, perBulletDmg, spacing)
         local dx, dy = math.cos(self.angle), math.sin(self.angle)
         local tx, ty
         local aimMode = (game.persist and game.persist.aimMode) or 0
         if aimMode == 0 then
             tx, ty = love.mouse.getPosition()
-            -- Guard against the rare case of the cursor sitting on the
-            -- player — would produce 0-length vectors / undefined angles.
             if (tx - self.x) ^ 2 + (ty - self.y) ^ 2 < 32 * 32 then
                 tx = self.x + dx * 420
                 ty = self.y + dy * 420
@@ -495,12 +496,32 @@ function Player:shoot(game)
             tx = self.x + dx * 420
             ty = self.y + dy * 420
         end
+        -- Snap convergence onto the nearest enemy near the target point.
+        -- Without this, an enemy closer than the cursor sits between spawn
+        -- and convergence — bullets pass by it still fanned out and most
+        -- of the shot misses. Snapping makes the fan meet on the enemy so
+        -- every bullet deposits its damage.
+        local snapR2 = 260 * 260
+        local bestE, bestD2 = nil, snapR2
+        for _, e in ipairs(game.enemies) do
+            if not e.dead then
+                local d2 = (e.x - tx) ^ 2 + (e.y - ty) ^ 2
+                if d2 < bestD2 then bestD2 = d2; bestE = e end
+            end
+        end
+        if bestE then
+            tx, ty = bestE.x, bestE.y
+        end
         for i = 1, count do
             local perp = (i - (count + 1) / 2) * spacing
             local spawnX = self.x + dx * self.r + (-dy) * perp
             local spawnY = self.y + dy * self.r + dx * perp
             local ang = math.atan2(ty - spawnY, tx - spawnX)
             self:fireBullet(game, ang, perBulletDmg, spawnX, spawnY)
+            -- High pierce so if the target dies early the rest aren't
+            -- wasted — they continue through to anything behind.
+            local b = game.bullets[#game.bullets]
+            if b then b.pierce = math.max(b.pierce or 0, 99) end
         end
     end
     if s.weaponType == "shotgun" then
@@ -584,6 +605,16 @@ function Player:fireRail(game)
             tx = self.x + dxC * 420
             ty = self.y + dyC * 420
         end
+        -- Snap convergence onto the nearest enemy near the target point so
+        -- every rail round lands on it.
+        local bestE, bestD2 = nil, 260 * 260
+        for _, e in ipairs(game.enemies) do
+            if not e.dead then
+                local d2 = (e.x - tx) ^ 2 + (e.y - ty) ^ 2
+                if d2 < bestD2 then bestD2 = d2; bestE = e end
+            end
+        end
+        if bestE then tx, ty = bestE.x, bestE.y end
     end
     for i = 1, count do
         local ang, spawnX, spawnY
