@@ -363,6 +363,18 @@ function MP.leave()
     MP._joinError = nil
 end
 
+-- Mark the room dead before leaving — used when a multiplayer run ends or
+-- the player abandons. Other clients seeing state.deleted=1 filter it out
+-- of their lobby browser. Combined with the leave verb the room ends up
+-- with zero members and a deleted flag, which is the strongest cleanup
+-- signal available without a portal-side delete verb.
+function MP.endRoom()
+    if MP.enabled then
+        emit("state " .. enc({deleted = 1, phase = "ended"}))
+    end
+    MP.leave()
+end
+
 -- Mirror the desired lobby settings into the room's persistent state so
 -- every joining client sees the same mode/pvp/difficulty/wave cap.
 function MP.applyLobbySettings(t)
@@ -534,6 +546,18 @@ function MP.poll(dt)
             local s = MP._pendingSettings
             MP._pendingSettings = nil
             MP.applyLobbySettings(s)
+        end
+        -- Bail out of any room that's been flagged dead by another member,
+        -- or any room we joined that turns out to already be locked. This
+        -- prevents a code-paste from sneaking into a started/ended run.
+        if MP.lobby.roomId and (rs.deleted == 1 or rs.deleted == true) then
+            MP._joinError = "this lobby was deleted"
+            MP.leave()
+        elseif MP.lobby.roomId and MP._joinAt and MP.lobby.locked
+               and MP.lobby.phase ~= "lobby" then
+            -- We pasted a code into a room that's already started.
+            MP._joinError = "this lobby has already started"
+            MP.leave()
         end
     end
 
@@ -722,8 +746,36 @@ function MP.endSession()
     MP.session = nil
 end
 
+-- Auto-cleanup tick: if we're alone in a started run and have been for a
+-- while, flag the room dead so it stops appearing in anyone else's
+-- browser. The portal evicts unresponsive members on a 60s heartbeat
+-- lapse; this complements that by making the room itself unjoinable.
+local _autoEndCheckAt = 0
+function MP._autoEndCheck()
+    if not MP.enabled or not MP.lobby then return end
+    if MP.lobby.phase ~= "wave" then return end
+    local now = love.timer.getTime()
+    if (now - _autoEndCheckAt) < 5 then return end
+    _autoEndCheckAt = now
+    -- Count peers (other than me) who've checked in recently
+    local activePeers = 0
+    for id, peer in pairs(MP.peers) do
+        if id ~= MP.localId and (now - (peer.last or now)) < MP.PEER_TIMEOUT then
+            activePeers = activePeers + 1
+        end
+    end
+    -- Alone in a started room for 30s+ → mark deleted so the lobby
+    -- browser hides it for everyone else. We stay in our run; just the
+    -- room's public visibility ends.
+    if activePeers == 0 and MP.lobby.startedAt
+       and (now - MP.lobby.startedAt) > 30 then
+        emit("state " .. enc({deleted = 1}))
+    end
+end
+
 function MP.update(dt, game)
     if not MP.enabled then return end
+    MP._autoEndCheck()
     -- Smooth peers toward their last reported position
     for _, peer in pairs(MP.peers) do
         peer.dispX = peer.dispX or peer.x

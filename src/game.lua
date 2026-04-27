@@ -2052,7 +2052,7 @@ function Game:keypressed(key)
         if key == "return" or key == "kpenter" then
             self:startRun(self.customConfig)
         elseif key == "m" then
-            if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
+            if self.isMultiplayer then MP.endRoom(); self.isMultiplayer = false end
             self.state = "menu"
             Audio:stopMusic()
             Fx.clearAll()
@@ -2065,6 +2065,9 @@ function Game:keypressed(key)
             self._resumeTo = nil
         elseif key == "m" then
             self:cashOutInfinite()
+            -- Pause→menu: peers may still be playing, so just leave the
+            -- room. Don't endRoom (that kills it for everyone). Auto-end
+            -- handles the case where I was the last active member.
             if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
             self.state = "menu"
             Audio:stopMusic()
@@ -2236,6 +2239,7 @@ function Game:mousepressed(x, y, button)
                     self._resumeTo = nil
                 elseif btn.action == "menu" then
                     self:cashOutInfinite()
+                    -- Pause→menu: just leave; peers may still be playing.
                     if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
                     self.state = "menu"
                     Audio:stopMusic()
@@ -2261,7 +2265,7 @@ function Game:mousepressed(x, y, button)
                 if btn.action == "again" then
                     self:startRun(self.customConfig)
                 elseif btn.action == "menu" then
-                    if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
+                    if self.isMultiplayer then MP.endRoom(); self.isMultiplayer = false end
                     self.state = "menu"
                     Audio:stopMusic()
                     Fx.clearAll()
