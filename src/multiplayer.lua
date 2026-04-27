@@ -265,6 +265,8 @@ end
 
 function MP.join(code)
     if not code or #code < 4 then return end
+    MP._joinAt = love.timer.getTime()
+    MP._joinError = nil
     MP._connectGrace = love.timer.getTime() + 6
     emit("join " .. code:upper())
 end
@@ -278,6 +280,8 @@ function MP.leave()
     MP.session = nil
     MP._pendingSettings = nil
     MP._inboxLen = 0
+    MP._joinAt = nil
+    MP._joinError = nil
 end
 
 -- Mirror the desired lobby settings into the room's persistent state so
@@ -420,6 +424,20 @@ function MP.poll(dt)
             MP._lastList = love.timer.getTime()
         end
         if lr.youUserId and not MP.localId then MP.localId = lr.youUserId end
+        -- Surface a failed join so the UI can bail out of mp_lobby
+        if MP._joinAt and not MP.lobby and lr.ok == false then
+            MP._joinError = lr.error or lr.message or "lobby unavailable"
+        end
+    end
+    -- Hard timeout: if a join request hasn't materialised a roomId in 5s,
+    -- assume the room no longer exists and surface the error.
+    if MP._joinAt and not (MP.lobby and MP.lobby.roomId) then
+        if (love.timer.getTime() - MP._joinAt) > 5 then
+            MP._joinError = MP._joinError or "lobby no longer exists"
+            MP._joinAt = nil
+        end
+    elseif MP.lobby and MP.lobby.roomId then
+        MP._joinAt = nil
     end
 
     -- Roster / presence

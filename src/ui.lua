@@ -4488,6 +4488,12 @@ function UI:drawMpLobby(game)
         love.graphics.setColor(1, 0.85, 0.7, 0.9)
         love.graphics.printf("Open Claude: Mythos on games.brassey.io to actually host or join.",
             0, 134, 1280, "center")
+    elseif MP._joinError then
+        love.graphics.setColor(1, 0.55, 0.45)
+        love.graphics.printf("THIS LOBBY NO LONGER EXISTS", 0, 110, 1280, "center")
+        love.graphics.setColor(1, 0.85, 0.7, 0.85)
+        love.graphics.printf("(" .. tostring(MP._joinError) .. ")  —  hop back and refresh the lobby list.",
+            0, 138, 1280, "center")
     else
         love.graphics.setColor(1, 1, 1, 0.55)
         love.graphics.printf("Waiting for the portal to materialise the room...",
