@@ -540,7 +540,7 @@ end
 -- TEMP DEBUG: force Void Sea into the first card offer. Remove before ship.
 local DEBUG_FORCE_VOIDSEA_WAVE_1 = false
 
-function Cards.pick(n, wave, player, disableEldritch, finalWave)
+function Cards.pick(n, wave, player, disableEldritch, finalWave, persist)
     if DEBUG_FORCE_VOIDSEA_WAVE_1 and wave == 1 then
         local voidCard
         for _, c in ipairs(Cards.pool) do
@@ -636,6 +636,13 @@ function Cards.pick(n, wave, player, disableEldritch, finalWave)
                 -- can't pivot into a fresh eldritch path late in a 20-wave run.
                 -- In long runs (infinite mode OR custom finalWave > 20), the weight
                 -- ramps back UP past wave 20 since you have plenty of run left.
+                -- Reality Shard champion bump: once you've collected ALL six
+                -- Reality Shards, the Ugnrak Beam card surfaces dramatically
+                -- more often. The shards literally fuel the beam, so a full
+                -- collector should see it offered.
+                if c.id == "eld_ugnrak" and persist and (persist.realityShards or 0) >= 6 then
+                    w = w * 6
+                end
                 if c.kickstarter and playerLvl == 0 then
                     local longRun = (not finalWave) or finalWave == 0 or finalWave > 20
                     local base = 4.0 + math.max(0, math.min(wave, 15) - 5) * 0.6

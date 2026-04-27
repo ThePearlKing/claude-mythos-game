@@ -122,7 +122,7 @@ function Game:resetGame()
     if cfg.dashCooldown then self.player.dashMax = cfg.dashCooldown end
     if cfg.startingReputation then self.player.reputation = cfg.startingReputation end
     if cfg.startingCards and cfg.startingCards > 0 then
-        local pool = Cards.pick(cfg.startingCards, 1, self.player)
+        local pool = Cards.pick(cfg.startingCards, 1, self.player, false, nil, self.persist)
         for _, c in ipairs(pool) do
             c.apply(self.player)
             table.insert(self.player.cardsTaken, c)
@@ -515,7 +515,7 @@ function Game:endWave()
         local seed = (lobbyHash + (self.wave or 0) * 9973 + (MP.localId or 0) * 1009) % 2147483647
         math.randomseed(seed)
     end
-    self.cardChoices = Cards.pick(count, self.wave, self.player, self.disableEldritch, self.finalWave)
+    self.cardChoices = Cards.pick(count, self.wave, self.player, self.disableEldritch, self.finalWave, self.persist)
     self.cardArmTime = 0.7 -- cannot click for 0.7s to prevent accidental selection
     self.state = "cards"
     Audio:play("card")
