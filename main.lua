@@ -238,6 +238,15 @@ function love.mousereleased(x, y, button)
     Game:mousereleased(gx, gy, button)
 end
 
+function love.quit()
+    -- Best-effort clean leave so we don't linger as a stale member in any
+    -- multiplayer room when the player closes the game. The portal's
+    -- 60s heartbeat eviction would catch us eventually but firing the
+    -- leave verb makes our seat free up immediately.
+    local ok, MP = pcall(require, "src.multiplayer")
+    if ok and MP then pcall(MP.leave) end
+end
+
 function love.textinput(text)
     -- Forward to MP lobby/create text fields when those screens are open
     if Game.state == "mp_menu" then
