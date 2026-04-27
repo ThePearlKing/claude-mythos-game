@@ -258,6 +258,64 @@ function MP.requestList()
     MP._lastList = love.timer.getTime()
 end
 
+-- Locally-hidden room codes (loaded from persist on demand). The portal
+-- has no public "delete room" verb, but for rooms the user created we can
+-- still try a soft-delete by joining briefly and mutating state.deleted=1
+-- before leaving, which lets every client that respects the flag drop the
+-- ghost from its list. Either way, hidden codes are filtered out of this
+-- client's lobby browser permanently.
+MP.hidden = nil   -- { [code] = true }
+
+local function loadHidden(persist)
+    if MP.hidden then return MP.hidden end
+    MP.hidden = {}
+    local raw = (persist and persist.mpHiddenRooms) or ""
+    for code in raw:gmatch("[^|]+") do
+        MP.hidden[code:upper()] = true
+    end
+    return MP.hidden
+end
+
+local function saveHidden(persist)
+    if not persist then return end
+    local list = {}
+    for code in pairs(MP.hidden or {}) do list[#list + 1] = code end
+    persist.mpHiddenRooms = table.concat(list, "|")
+    pcall(require("src.save").save, persist)
+end
+
+function MP.isHidden(code, persist)
+    if not code then return false end
+    loadHidden(persist)
+    return MP.hidden[code:upper()] == true
+end
+
+-- Attempts a "soft delete" for a frozen lobby. Joins long enough to
+-- mutate state.deleted=1 + state.phase="deleted" so other clients can
+-- filter it out, then leaves. If the room is fully dead (5s timeout),
+-- we still hide it locally so the user gets it out of their list.
+function MP.deleteRoom(code, persist)
+    if not code then return end
+    code = code:upper()
+    loadHidden(persist)
+    MP.hidden[code] = true
+    saveHidden(persist)
+    -- Best-effort portal-side cleanup
+    if MP.connected then
+        emit("join " .. code)
+        emit("state " .. enc({deleted = 1, phase = "deleted"}))
+        emit("leave")
+    end
+    -- Drop from the in-memory list immediately
+    if MP.list then
+        for i = #MP.list, 1, -1 do
+            if (MP.list[i].code or ""):upper() == code then
+                table.remove(MP.list, i)
+            end
+        end
+    end
+end
+
 function MP.create(name, opts)
     name = (name and name ~= "" and name) or "Crab Lobby"
     MP._pendingSettings = opts or {}
@@ -338,6 +396,7 @@ end
 -- ============================================================
 function MP._handleEvent(evt)
     local v, p, from = evt.verb, evt.payload or {}, evt.userId
+    if from ~= nil then from = tostring(from) end
     if not v then return end
     if from == MP.localId then return end
     -- Self may not be set yet; ignore self-echoes once we know our id
@@ -424,11 +483,15 @@ function MP.poll(dt)
 
     -- Local identity: the portal writes signed-in user info to
     -- __loveweb__/identity.json. We use that to recognise ourselves in
-    -- the roster instead of the (non-existent) youUserId field.
+    -- the roster. Always normalise to a string so comparisons against
+    -- roster userIds (which are strings per the integration doc) match —
+    -- otherwise a number/string mismatch makes the local user render
+    -- as a fake peer with no fetched profile.
     if not MP.localId then
         local idj = readJson("__loveweb__/identity.json")
         if idj then
-            MP.localId = idj.userId or idj.id or idj.user_id or MP.localId
+            local uid = idj.userId or idj.id or idj.user_id
+            if uid ~= nil then MP.localId = tostring(uid) end
             if idj.handle and (not MP.localHandle or MP.localHandle == "Crab") then
                 MP.localHandle = idj.handle
             end
@@ -484,35 +547,37 @@ function MP.poll(dt)
         MP._joinAt = nil
     end
 
-    -- Roster / presence
+    -- Roster / presence. All userIds normalised to strings so peer keys
+    -- match identity.json's MP.localId regardless of how the portal
+    -- happens to type its values today.
     local roster = readJson(NET .. "/roster.json")
     if roster and roster.members then
         local seen = {}
         for _, m in ipairs(roster.members) do
-            local id = m.userId
+            local id = m.userId ~= nil and tostring(m.userId) or nil
             if id then
                 seen[id] = true
                 local p = MP.peers[id]
                 if not p then
                     p = {
-                        handle = m.handle or ("Crab " .. tostring(id)),
+                        handle = m.handle or ("Crab " .. id),
                         x = 640, y = 360, dispX = 640, dispY = 360,
                         hp = 100, max = 100, alive = true, deathTimer = 0,
                         last = love.timer.getTime(),
                     }
                     MP.peers[id] = p
-                    if id ~= (MP.localId or roster.youUserId) then
+                    if id ~= MP.localId then
                         table.insert(MP.events, "+ " .. p.handle .. " joined")
                     end
                 end
                 p.handle = m.handle or p.handle
-                if not p.cosmetics and not p.cosmeticsRequested then
-                    emit("profile " .. tostring(id))
+                if id == MP.localId and m.handle then MP.localHandle = m.handle end
+                if id ~= MP.localId and not p.cosmetics and not p.cosmeticsRequested then
+                    emit("profile " .. id)
                     p.cosmeticsRequested = true
                 end
             end
         end
-        if roster.youUserId then MP.localId = roster.youUserId end
         for id, peer in pairs(MP.peers) do
             if not seen[id] and id ~= MP.localId then
                 table.insert(MP.events, "- " .. (peer.handle or "?") .. " left")
