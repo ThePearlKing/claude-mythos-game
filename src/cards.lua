@@ -537,29 +537,7 @@ function Cards.rarityColor(r)
     return rarityColor[r] or {1,1,1}
 end
 
--- TEMP DEBUG: force Void Sea into the first card offer. Remove before ship.
-local DEBUG_FORCE_VOIDSEA_WAVE_1 = false
-
 function Cards.pick(n, wave, player, disableEldritch, finalWave, persist)
-    if DEBUG_FORCE_VOIDSEA_WAVE_1 and wave == 1 then
-        local voidCard
-        for _, c in ipairs(Cards.pool) do
-            if c.id == "eld_voidsea" then voidCard = c; break end
-        end
-        if voidCard then
-            local result = {voidCard}
-            -- pad with other random picks (skipping void)
-            local takenIds = {eld_voidsea = true}
-            for _, c in ipairs(Cards.pool) do
-                if #result >= n then break end
-                if not takenIds[c.id] and c.rarity == "common" then
-                    table.insert(result, c)
-                    takenIds[c.id] = true
-                end
-            end
-            return result
-        end
-    end
     -- Early-wave throttle for powerful rarities: 0.25x at wave 1, full by wave 10, boost past 10
     local earlyFactor = math.max(0.25, math.min(1, wave / 10))
     local lateBoost   = 1 + math.max(0, wave - 10) * 0.08
