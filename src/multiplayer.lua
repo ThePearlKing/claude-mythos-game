@@ -37,6 +37,7 @@ MP.MAX_CAP      = 8
 -- Live state
 -- ============================================================
 MP.connected   = false   -- portal infrastructure detected
+MP.probed      = false   -- have we finished the on-boot detection grace?
 MP.enabled     = false   -- in a room and using MP for the live run
 MP.localId     = nil
 MP.localHandle = "Crab"
@@ -180,10 +181,19 @@ local function parseJson(s)
 end
 
 -- ============================================================
--- Magic-print primitives
+-- Magic-print primitives. Once we've detected we're running on
+-- desktop LÖVE (no portal infrastructure), every emit becomes a
+-- no-op so we don't spam the user's terminal with [[LOVEWEB_NET]]
+-- lines that nothing is listening to.
 -- ============================================================
-local function emit(line) print("[[LOVEWEB_NET]]" .. line) end
-local function emitSend(verb, payload) emit("send " .. verb .. " " .. enc(payload or {})) end
+local function emit(line)
+    if MP.probed and not MP.connected then return end
+    print("[[LOVEWEB_NET]]" .. line)
+end
+local function emitSend(verb, payload)
+    if MP.probed and not MP.connected then return end
+    print("[[LOVEWEB_NET]]send " .. verb .. " " .. enc(payload or {}))
+end
 
 local function readJson(path)
     if not (love and love.filesystem and love.filesystem.getInfo) then return nil end
@@ -201,11 +211,18 @@ end
 -- Portal detect & profile publishing
 -- ============================================================
 function MP.detect()
-    if not (love and love.filesystem) then return false end
-    -- Trigger a list call so the runtime materialises the net dir even on
-    -- first launch in the portal. If files appear within a frame or two,
-    -- we report connected.
-    pcall(emit, "list")
+    if not (love and love.filesystem) then
+        MP.probed = true
+        MP.connected = false
+        return false
+    end
+    -- Single-shot boot probe: poke the runtime so it materialises the
+    -- net dir if it's there, then we'll re-check during MP.poll after a
+    -- brief grace period and lock the verdict in MP.probed.
+    if not MP.probed then
+        print("[[LOVEWEB_NET]]list")
+        MP._probeStart = love.timer.getTime()
+    end
     MP.connected = love.filesystem.getInfo(NET) ~= nil
         or love.filesystem.getInfo(NET .. "/status.json") ~= nil
     return MP.connected
@@ -356,6 +373,21 @@ function MP._handleEvent(evt)
 end
 
 function MP.poll(dt)
+    -- Boot-time probe: 1.2s grace for the portal to write its first
+    -- response file. After that we lock the verdict and stop emitting
+    -- magic-print lines on desktop so the terminal stays clean.
+    if not MP.probed then
+        local now = love.timer.getTime()
+        local started = MP._probeStart or now
+        if love.filesystem.getInfo(NET) or love.filesystem.getInfo(NET .. "/status.json") then
+            MP.connected = true
+            MP.probed = true
+        elseif (now - started) > 1.2 then
+            MP.connected = false
+            MP.probed = true
+        end
+    end
+    if MP.probed and not MP.connected then return end
     -- Room file
     local room = readJson(NET .. "/room.json")
     if room then

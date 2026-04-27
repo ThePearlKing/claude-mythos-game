@@ -4051,11 +4051,19 @@ function UI:drawMpMenu(game)
     love.graphics.printf("Pick a public lobby, paste a code, or host your own.",
         0, 110, 1280, "center")
 
-    if not MP.connected then
-        love.graphics.setColor(1, 0.65, 0.4, 0.95)
-        love.graphics.printf(
-            "Multiplayer requires the games.brassey.io portal — desktop LÖVE has no peers.",
-            0, 138, 1280, "center")
+    if MP.probed and not MP.connected then
+        love.graphics.setColor(0.18, 0.04, 0.04, 0.95)
+        love.graphics.rectangle("fill", 80, 132, 1120, 56, 8, 8)
+        love.graphics.setColor(1, 0.55, 0.35, 1)
+        love.graphics.rectangle("line", 80, 132, 1120, 56, 8, 8)
+        love.graphics.setColor(1, 0.85, 0.5)
+        love.graphics.printf("YOU'RE RUNNING LOCALLY — NOT ON THE PORTAL", 80, 142, 1120, "center")
+        love.graphics.setColor(1, 0.85, 0.7, 0.9)
+        love.graphics.printf("Multiplayer needs the games.brassey.io wrapper. Open Claude: Mythos there to host or join.",
+            80, 164, 1120, "center")
+    elseif not MP.probed then
+        love.graphics.setColor(1, 1, 1, 0.55)
+        love.graphics.printf("Probing portal connection…", 0, 138, 1280, "center")
     end
 
     -- Code input
@@ -4136,6 +4144,10 @@ end
 
 function UI:mpMenuClick(game, x, y)
     local function within(b) return b and x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h end
+    -- Refresh + Back always work; everything else is a no-op when offline
+    if within(game.mpRefreshBtn) then MP.requestList(); return end
+    if within(game.mpBackBtn) then game.state = "menu"; return end
+    if MP.probed and not MP.connected then return end
     if within(game.mpJoinBtn) then
         if game.mpJoinCode and #game.mpJoinCode >= 4 then
             MP.publishProfile(game.persist)
@@ -4155,9 +4167,7 @@ function UI:mpMenuClick(game, x, y)
             return
         end
     end
-    if within(game.mpRefreshBtn) then MP.requestList(); return end
     if within(game.mpCreateBtn) then game:openMpCreate(); return end
-    if within(game.mpBackBtn) then game.state = "menu"; return end
 end
 
 function UI:mpMenuKey(game, key)
@@ -4199,6 +4209,11 @@ function UI:drawMpCreate(game)
     love.graphics.setColor(0.85, 0.9, 1, 0.85)
     love.graphics.printf("Pick a name, mode, capacity, and difficulty. Anyone can join with the code.",
         0, 96, 1280, "center")
+    if MP.probed and not MP.connected then
+        love.graphics.setColor(1, 0.85, 0.5)
+        love.graphics.printf("(Local mode — no portal detected. Hosting won't actually open a room.)",
+            0, 120, 1280, "center")
+    end
 
     local d = game.mpDraft
 
@@ -4426,11 +4441,12 @@ function UI:drawMpLobby(game)
         love.graphics.setColor(0.95, 0.95, 1)
         love.graphics.printf(MP.lobby.code, 0, 116, 1280, "center")
         love.graphics.setFont(self.font)
-    elseif not MP.connected then
-        love.graphics.setColor(1, 0.6, 0.4, 0.95)
-        love.graphics.printf(
-            "Multiplayer requires the games.brassey.io portal — desktop LÖVE has no peers.",
-            0, 116, 1280, "center")
+    elseif MP.probed and not MP.connected then
+        love.graphics.setColor(1, 0.85, 0.5)
+        love.graphics.printf("YOU'RE RUNNING LOCALLY — NOT ON THE PORTAL", 0, 110, 1280, "center")
+        love.graphics.setColor(1, 0.85, 0.7, 0.9)
+        love.graphics.printf("Open Claude: Mythos on games.brassey.io to actually host or join.",
+            0, 134, 1280, "center")
     else
         love.graphics.setColor(1, 1, 1, 0.55)
         love.graphics.printf("Waiting for the portal to materialise the room...",
