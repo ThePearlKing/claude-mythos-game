@@ -4470,16 +4470,26 @@ function UI:mpCreateKey(game, key)
         if #s > 0 then game.mpDraft.name = s:sub(1, #s - 1) end
         return
     end
+    -- Explicit space-key handler. love.js sometimes does not fire
+    -- love.textinput for the space character, leaving the lobby-name
+    -- input unable to accept spaces. Appending here from keypressed
+    -- works on both web and desktop. mpCreateText skips spaces so we
+    -- don't end up with doubled-space when textinput DOES fire.
+    if key == "space" then
+        local s = game.mpDraft.name or ""
+        if #s < 28 then game.mpDraft.name = s .. " " end
+        return
+    end
 end
 
 function UI:mpCreateText(game, text)
     if not text then return end
     local s = game.mpDraft.name or ""
-    -- Accept everything except newlines / carriage returns. The previous
-    -- [%w%s%p] filter was meant to reject control chars but in some
-    -- LuaJIT builds it dropped the space character outright.
+    -- Skip space — handled by mpCreateKey above so love.js builds that
+    -- don't fire textinput for space still get spaces, without doubling
+    -- on desktop where both events fire.
     for c in text:gmatch(".") do
-        if #s < 28 and c ~= "\n" and c ~= "\r" then s = s .. c end
+        if #s < 28 and c ~= "\n" and c ~= "\r" and c ~= " " then s = s .. c end
     end
     game.mpDraft.name = s
 end

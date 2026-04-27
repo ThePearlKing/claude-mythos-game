@@ -262,8 +262,11 @@ function love.textinput(text)
             return
         end
         local s = Game.chat.text or ""
+        -- Skip space — handled by game.lua's wave keypressed so love.js
+        -- builds that don't fire textinput for space still get spaces
+        -- without doubling on desktop.
         for c in text:gmatch(".") do
-            if #s < 120 and c ~= "\n" then s = s .. c end
+            if #s < 120 and c ~= "\n" and c ~= " " then s = s .. c end
         end
         Game.chat.text = s
     end

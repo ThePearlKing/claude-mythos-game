@@ -2102,6 +2102,12 @@ function Game:keypressed(key)
             elseif key == "backspace" then
                 local s = chat.text or ""
                 if #s > 0 then chat.text = s:sub(1, #s - 1) end
+            elseif key == "space" then
+                -- love.js sometimes drops textinput for space, so accept
+                -- it from keypressed too. Main.lua's textinput handler
+                -- skips space to prevent doubling on desktop builds.
+                local s = chat.text or ""
+                if #s < 120 then chat.text = s .. " " end
             end
             return
         end
