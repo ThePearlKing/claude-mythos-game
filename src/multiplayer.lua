@@ -181,10 +181,12 @@ local function parseJson(s)
 end
 
 -- ============================================================
--- Magic-print primitives. Once we've detected we're running on
--- desktop LÖVE (no portal infrastructure), every emit becomes a
--- no-op so we don't spam the user's terminal with [[LOVEWEB_NET]]
--- lines that nothing is listening to.
+-- Magic-print primitives. We always emit during the boot grace
+-- window so the portal can actually receive create/join verbs even
+-- before its first response file has materialised. Only AFTER we've
+-- conclusively determined we're running on desktop LÖVE (probed=true
+-- and still no net dir) do we silence subsequent emits to keep the
+-- terminal clean.
 -- ============================================================
 local function emit(line)
     if MP.probed and not MP.connected then return end
@@ -260,7 +262,26 @@ function MP.create(name, opts)
     name = (name and name ~= "" and name) or "Crab Lobby"
     MP._pendingSettings = opts or {}
     MP._connectGrace = love.timer.getTime() + 6
-    emit("create lobby " .. name)
+    -- Private lobbies use the "unlisted" verb form so they don't appear in
+    -- the public room list — only people with the 6-char code can join.
+    if opts and opts.private then
+        emit("create unlisted " .. name)
+    else
+        emit("create lobby " .. name)
+    end
+end
+
+-- Toggle the lobby's locked flag. Locked rooms are still visible to current
+-- members but the lobby browser hides them, the JOIN button refuses, and a
+-- code-join attempt sees locked=1 in room.state and bails back out.
+function MP.setLocked(locked)
+    if not MP.enabled then return end
+    emit("state " .. enc({locked = locked and 1 or 0}))
+    if MP.lobby then MP.lobby.locked = locked and true or false end
+end
+
+function MP.toggleLock()
+    MP.setLocked(not (MP.lobby and MP.lobby.locked))
 end
 
 function MP.join(code)
@@ -377,21 +398,42 @@ function MP._handleEvent(evt)
 end
 
 function MP.poll(dt)
-    -- Boot-time probe: 1.2s grace for the portal to write its first
-    -- response file. After that we lock the verdict and stop emitting
-    -- magic-print lines on desktop so the terminal stays clean.
+    -- Boot-time probe: 5s grace for the portal to write any response file
+    -- (last_result.json appears even before the first room is created).
+    -- After the grace, lock as offline if nothing showed up. If portal
+    -- files DO appear later (slow init), unlock and reconnect — emits
+    -- start flowing again.
+    local now = love.timer.getTime()
+    local netExists = love.filesystem.getInfo(NET)
+        or love.filesystem.getInfo(NET .. "/status.json")
+        or love.filesystem.getInfo(NET .. "/last_result.json")
+        or love.filesystem.getInfo("__loveweb__/identity.json")
     if not MP.probed then
-        local now = love.timer.getTime()
         local started = MP._probeStart or now
-        if love.filesystem.getInfo(NET) or love.filesystem.getInfo(NET .. "/status.json") then
+        if netExists then
             MP.connected = true
             MP.probed = true
-        elseif (now - started) > 1.2 then
+        elseif (now - started) > 5 then
             MP.connected = false
             MP.probed = true
         end
+    elseif not MP.connected and netExists then
+        MP.connected = true
     end
     if MP.probed and not MP.connected then return end
+
+    -- Local identity: the portal writes signed-in user info to
+    -- __loveweb__/identity.json. We use that to recognise ourselves in
+    -- the roster instead of the (non-existent) youUserId field.
+    if not MP.localId then
+        local idj = readJson("__loveweb__/identity.json")
+        if idj then
+            MP.localId = idj.userId or idj.id or idj.user_id or MP.localId
+            if idj.handle and (not MP.localHandle or MP.localHandle == "Crab") then
+                MP.localHandle = idj.handle
+            end
+        end
+    end
     -- Room file
     local room = readJson(NET .. "/room.json")
     if room then
@@ -404,6 +446,8 @@ function MP.poll(dt)
         local rs = room.state or {}
         MP.lobby.mode       = rs.mode or MP.lobby.mode or "last_stand"
         MP.lobby.pvp        = (rs.pvp == 1) or (rs.pvp == true) or false
+        MP.lobby.private    = (rs.private == 1) or (rs.private == true) or MP.lobby.private or false
+        MP.lobby.locked     = (rs.locked == 1) or (rs.locked == true) or false
         MP.lobby.difficulty = rs.difficulty or MP.lobby.difficulty or "normal"
         MP.lobby.finalWave  = tonumber(rs.final_wave) or MP.lobby.finalWave or 20
         MP.lobby.phase      = rs.phase or MP.lobby.phase or "lobby"

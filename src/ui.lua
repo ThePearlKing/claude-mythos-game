@@ -4156,14 +4156,19 @@ function UI:drawMpMenu(game)
             love.graphics.rectangle("line", listX, y, listW, rowH, 6, 6)
             love.graphics.setColor(1, 1, 1)
             love.graphics.printf(r.name or "Lobby", listX + 16, y + 8, 540, "left")
-            local players = (r.members or r.memberCount or 0)
-            local cap = r.capacity or 4
+            local rs = r.state or {}
+            local players = (r.memberCount or r.onlineCount or r.members or 0)
+            -- Prefer the host's chosen capacity (mirrored into room.state)
+            -- over the portal's default 8. Same for mode — the portal's
+            -- list summary doesn't always include the room state, so we
+            -- show "—" rather than guessing "last_stand".
+            local cap = rs.capacity or r.capacity or "?"
             love.graphics.setColor(0.7, 0.95, 0.7)
-            love.graphics.printf(string.format("%d / %d", players, cap),
+            love.graphics.printf(string.format("%d / %s", players, tostring(cap)),
                 listX + 580, y + 8, 100, "left")
             love.graphics.setColor(0.85, 0.8, 1)
-            local rs = r.state or {}
-            love.graphics.printf((rs.mode or "last_stand"):upper(),
+            local modeLabel = rs.mode and MP.modeById(rs.mode).name or "—"
+            love.graphics.printf(modeLabel,
                 listX + 700, y + 8, 200, "left")
             love.graphics.setColor(1, 1, 1, 0.5)
             love.graphics.printf("CODE " .. (r.code or "??????"),
