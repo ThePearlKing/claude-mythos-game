@@ -414,15 +414,17 @@ function UI:drawMenu(game)
 
     love.graphics.setFont(self.font)
 
-    -- Menu buttons (5 across)
+    -- Menu buttons (6 across — kept on a single row, slightly narrower so
+    -- the row still fits inside 1280px without crowding the difficulty meter).
     local buttons = {
-        {label = "BEGIN [ENTER]",  action = "start",     color = {1, 0.6, 0.2}},
-        {label = "CLAUDE [K]",     action = "customise", color = {1, 0.45, 0.85}},
-        {label = "CUSTOM [C]",     action = "custom",    color = {0.6, 0.3, 0.9}},
-        {label = "OPTIONS [O]",    action = "options",   color = {0.3, 0.7, 0.9}},
-        {label = "QUIT [ESC]",     action = "quit",      color = {0.9, 0.2, 0.2}},
+        {label = "BEGIN [ENTER]",  action = "start",       color = {1, 0.6, 0.2}},
+        {label = "MULTI [M]",      action = "multiplayer", color = {0.4, 0.85, 0.6}},
+        {label = "CLAUDE [K]",     action = "customise",   color = {1, 0.45, 0.85}},
+        {label = "CUSTOM [C]",     action = "custom",      color = {0.6, 0.3, 0.9}},
+        {label = "OPTIONS [O]",    action = "options",     color = {0.3, 0.7, 0.9}},
+        {label = "QUIT [ESC]",     action = "quit",        color = {0.9, 0.2, 0.2}},
     }
-    local bw, bh, gap = 180, 46, 20
+    local bw, bh, gap = 170, 46, 18
     local totalW = #buttons * bw + (#buttons - 1) * gap
     local sx = (1280 - totalW) / 2
     for i, b in ipairs(buttons) do
@@ -3962,6 +3964,591 @@ function UI:drawPaused(game)
         b.x, b.y, b.w, b.h = x, y, w, h
     end
     game.pauseButtons = buttons
+end
+
+-- =====================================================================
+-- MULTIPLAYER SCREENS
+-- =====================================================================
+local MP = require("src.multiplayer")
+local Cosmetics = require("src.cosmetics")
+
+local function mpButton(x, y, w, h, label, color, mx, my)
+    local hover = mx >= x and mx <= x + w and my >= y and my <= y + h
+    local r, g, b = color[1], color[2], color[3]
+    love.graphics.setColor(hover and r * 1.35 or r * 0.85,
+                           hover and g * 1.35 or g * 0.85,
+                           hover and b * 1.35 or b * 0.85)
+    love.graphics.rectangle("fill", x, y, w, h, 8, 8)
+    love.graphics.setColor(1, 1, 1, 0.95)
+    love.graphics.rectangle("line", x, y, w, h, 8, 8)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf(label, x, y + (h - 16) / 2, w, "center")
+    return {x = x, y = y, w = w, h = h}
+end
+
+-- Draw a small peer-style crab preview at (cx, cy). Used for the lobby
+-- roster (where we want the same look the in-game peer crabs have).
+local function drawMiniCrab(cx, cy, scale, cosmetics, t, alive)
+    cosmetics = cosmetics or {body = "orange", eye = "normal", claw = "normal", hat = "none", trail = "none"}
+    local col = Cosmetics.bodyColor(cosmetics)
+    local outline = Cosmetics.outlineColor(cosmetics, col)
+    local alpha = (alive == false) and 0.5 or 1.0
+    love.graphics.push()
+    love.graphics.translate(cx, cy)
+    love.graphics.scale(scale, scale)
+    love.graphics.setColor(col[1], col[2], col[3], 0.18 * alpha)
+    love.graphics.circle("fill", 0, 0, 28)
+    love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
+    love.graphics.setLineWidth(2.5)
+    for side = -1, 1, 2 do
+        for i = 1, 3 do
+            local sway = math.sin(t * 4 + i + side) * 1.5
+            love.graphics.line(side * (10 + i * 2), (i - 2) * 4,
+                               side * (16 + i * 2), (i - 2) * 4 + 8 + sway)
+        end
+    end
+    love.graphics.setColor(col[1], col[2], col[3], alpha)
+    love.graphics.circle("fill", 0, 0, 16)
+    love.graphics.setColor(col[1] * 1.2, col[2] * 1.2, col[3] * 1.2, alpha * 0.7)
+    love.graphics.ellipse("fill", 0, -4, 12, 6)
+    love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
+    love.graphics.circle("line", 0, 0, 16)
+    -- Pincer hint
+    love.graphics.setColor(col[1], col[2], col[3], alpha)
+    love.graphics.ellipse("fill", -22, -6, 6, 4)
+    love.graphics.ellipse("fill",  22, -6, 6, 4)
+    love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
+    love.graphics.ellipse("line", -22, -6, 6, 4)
+    love.graphics.ellipse("line",  22, -6, 6, 4)
+    -- Eyes
+    love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
+    love.graphics.line(-5, -12, -6, -18)
+    love.graphics.line( 5, -12,  6, -18)
+    love.graphics.setColor(1, 1, 1, alpha)
+    love.graphics.circle("fill", -6, -18, 2.6)
+    love.graphics.circle("fill",  6, -18, 2.6)
+    love.graphics.setColor(0, 0, 0, alpha)
+    love.graphics.circle("fill", -6, -18, 1.2)
+    love.graphics.circle("fill",  6, -18, 1.2)
+    if cosmetics.hat and cosmetics.hat ~= "none" then
+        love.graphics.setColor(0.95, 0.85, 0.4, alpha)
+        love.graphics.ellipse("fill", 0, -22, 9, 3)
+        love.graphics.rectangle("fill", -5, -28, 10, 6, 1, 1)
+    end
+    love.graphics.setLineWidth(1)
+    love.graphics.pop()
+end
+
+-- ----- Lobby browser -------------------------------------------------
+function UI:drawMpMenu(game)
+    love.graphics.clear(0.04, 0.05, 0.12)
+    local mx, my = love.mouse.getPosition()
+    love.graphics.setFont(self.titleFont)
+    love.graphics.setColor(0.5, 0.95, 0.7)
+    love.graphics.printf("MULTIPLAYER", 0, 30, 1280, "center")
+    love.graphics.setFont(self.font)
+    love.graphics.setColor(0.8, 0.85, 0.95, 0.85)
+    love.graphics.printf("Pick a public lobby, paste a code, or host your own.",
+        0, 110, 1280, "center")
+
+    if not MP.connected then
+        love.graphics.setColor(1, 0.65, 0.4, 0.95)
+        love.graphics.printf(
+            "Multiplayer requires the games.brassey.io portal — desktop LÖVE has no peers.",
+            0, 138, 1280, "center")
+    end
+
+    -- Code input
+    local codeBoxX, codeBoxY, codeBoxW, codeBoxH = 360, 178, 360, 50
+    love.graphics.setColor(0.12, 0.16, 0.26, 0.9)
+    love.graphics.rectangle("fill", codeBoxX, codeBoxY, codeBoxW, codeBoxH, 8, 8)
+    love.graphics.setColor(0.5, 0.8, 1, 0.8)
+    love.graphics.rectangle("line", codeBoxX, codeBoxY, codeBoxW, codeBoxH, 8, 8)
+    love.graphics.setColor(1, 1, 1, 0.6)
+    love.graphics.printf("CODE", codeBoxX, codeBoxY + 4, codeBoxW, "left")
+    love.graphics.setColor(1, 1, 1, 1)
+    local codeStr = (game.mpJoinCode or ""):upper()
+    if #codeStr == 0 then
+        love.graphics.setColor(1, 1, 1, 0.35)
+        love.graphics.printf("type 6-char code…", codeBoxX, codeBoxY + 22, codeBoxW, "center")
+    else
+        love.graphics.printf(codeStr, codeBoxX, codeBoxY + 22, codeBoxW, "center")
+        if math.floor(love.timer.getTime() * 2) % 2 == 0 then
+            local tw = self.font:getWidth(codeStr)
+            love.graphics.rectangle("fill", codeBoxX + codeBoxW / 2 + tw / 2 + 2, codeBoxY + 22, 2, 16)
+        end
+    end
+    game.mpJoinBox = {codeBoxX, codeBoxY, codeBoxW, codeBoxH}
+    game.mpJoinBtn = mpButton(codeBoxX + codeBoxW + 12, codeBoxY, 180, codeBoxH,
+        "JOIN", {0.3, 0.7, 0.95}, mx, my)
+
+    -- Public room list
+    local listX, listY, listW = 80, 250, 1120
+    local rowH = 56
+    local rooms = MP.list or {}
+    love.graphics.setColor(1, 1, 1, 0.7)
+    love.graphics.printf("PUBLIC LOBBIES", listX, listY - 28, listW, "left")
+    love.graphics.setColor(1, 1, 1, 0.4)
+    love.graphics.printf(
+        rooms[1] and (#rooms .. " open") or "(none — host one below)",
+        listX, listY - 28, listW, "right")
+    game.mpRoomBtns = {}
+    if #rooms == 0 then
+        love.graphics.setColor(0.6, 0.6, 0.7, 0.8)
+        love.graphics.rectangle("line", listX, listY, listW, rowH * 3, 6, 6)
+        love.graphics.setColor(0.6, 0.6, 0.7, 0.6)
+        love.graphics.printf("No public lobbies right now.", listX, listY + rowH, listW, "center")
+    else
+        for i, r in ipairs(rooms) do
+            if i > 6 then break end
+            local y = listY + (i - 1) * (rowH + 8)
+            local hover = mx >= listX and mx <= listX + listW and my >= y and my <= y + rowH
+            love.graphics.setColor(hover and 0.18 or 0.10, 0.16, 0.28, 0.9)
+            love.graphics.rectangle("fill", listX, y, listW, rowH, 6, 6)
+            love.graphics.setColor(0.4, 0.7, 0.95, 0.6)
+            love.graphics.rectangle("line", listX, y, listW, rowH, 6, 6)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.printf(r.name or "Lobby", listX + 16, y + 8, 540, "left")
+            local players = (r.members or r.memberCount or 0)
+            local cap = r.capacity or 4
+            love.graphics.setColor(0.7, 0.95, 0.7)
+            love.graphics.printf(string.format("%d / %d", players, cap),
+                listX + 580, y + 8, 100, "left")
+            love.graphics.setColor(0.85, 0.8, 1)
+            local rs = r.state or {}
+            love.graphics.printf((rs.mode or "last_stand"):upper(),
+                listX + 700, y + 8, 200, "left")
+            love.graphics.setColor(1, 1, 1, 0.5)
+            love.graphics.printf("CODE " .. (r.code or "??????"),
+                listX + 900, y + 8, 200, "right")
+            love.graphics.setColor(1, 1, 1, 0.4)
+            love.graphics.printf("click to join", listX + 16, y + 30, listW - 40, "right")
+            game.mpRoomBtns[#game.mpRoomBtns + 1] = {x = listX, y = y, w = listW, h = rowH, code = r.code}
+        end
+    end
+
+    -- Bottom action row: refresh / create / back
+    local rowY = 624
+    game.mpRefreshBtn = mpButton(80, rowY, 200, 50, "REFRESH",   {0.3, 0.55, 0.85}, mx, my)
+    game.mpCreateBtn  = mpButton(540, rowY, 200, 50, "HOST LOBBY", {0.4, 0.85, 0.55}, mx, my)
+    game.mpBackBtn    = mpButton(1000, rowY, 200, 50, "BACK",     {0.5, 0.4, 0.7}, mx, my)
+end
+
+function UI:mpMenuClick(game, x, y)
+    local function within(b) return b and x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h end
+    if within(game.mpJoinBtn) then
+        if game.mpJoinCode and #game.mpJoinCode >= 4 then
+            MP.publishProfile(game.persist)
+            MP.join(game.mpJoinCode)
+            game.state = "mp_lobby"
+        end
+        return
+    end
+    if within(game.mpJoinBox) then return end -- focus stays here
+    for _, btn in ipairs(game.mpRoomBtns or {}) do
+        if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
+            if btn.code then
+                MP.publishProfile(game.persist)
+                MP.join(btn.code)
+                game.state = "mp_lobby"
+            end
+            return
+        end
+    end
+    if within(game.mpRefreshBtn) then MP.requestList(); return end
+    if within(game.mpCreateBtn) then game:openMpCreate(); return end
+    if within(game.mpBackBtn) then game.state = "menu"; return end
+end
+
+function UI:mpMenuKey(game, key)
+    if key == "escape" then game.state = "menu"; return end
+    if key == "return" or key == "kpenter" then
+        if game.mpJoinCode and #game.mpJoinCode >= 4 then
+            MP.publishProfile(game.persist)
+            MP.join(game.mpJoinCode)
+            game.state = "mp_lobby"
+        end
+        return
+    end
+    if key == "backspace" then
+        local s = game.mpJoinCode or ""
+        if #s > 0 then game.mpJoinCode = s:sub(1, #s - 1) end
+        return
+    end
+    if key == "f5" then MP.requestList(); return end
+    if key == "h" or key == "n" then game:openMpCreate(); return end
+end
+
+function UI:mpMenuText(game, text)
+    if not text then return end
+    local s = game.mpJoinCode or ""
+    for c in text:gmatch(".") do
+        if c:match("[%w]") and #s < 6 then s = s .. c:upper() end
+    end
+    game.mpJoinCode = s
+end
+
+-- ----- Create lobby form --------------------------------------------
+function UI:drawMpCreate(game)
+    love.graphics.clear(0.04, 0.07, 0.13)
+    local mx, my = love.mouse.getPosition()
+    love.graphics.setFont(self.titleFont)
+    love.graphics.setColor(0.45, 0.95, 0.65)
+    love.graphics.printf("HOST A LOBBY", 0, 24, 1280, "center")
+    love.graphics.setFont(self.font)
+    love.graphics.setColor(0.85, 0.9, 1, 0.85)
+    love.graphics.printf("Pick a name, mode, capacity, and difficulty. Anyone can join with the code.",
+        0, 96, 1280, "center")
+
+    local d = game.mpDraft
+
+    -- Name input
+    local nameX, nameY, nameW, nameH = 280, 150, 720, 50
+    love.graphics.setColor(0.10, 0.16, 0.28, 0.9)
+    love.graphics.rectangle("fill", nameX, nameY, nameW, nameH, 8, 8)
+    love.graphics.setColor(0.5, 0.85, 1, 0.7)
+    love.graphics.rectangle("line", nameX, nameY, nameW, nameH, 8, 8)
+    love.graphics.setColor(1, 1, 1, 0.55)
+    love.graphics.printf("LOBBY NAME", nameX + 12, nameY + 4, nameW, "left")
+    love.graphics.setColor(1, 1, 1)
+    local n = d.name or ""
+    if #n == 0 then
+        love.graphics.setColor(1, 1, 1, 0.35)
+        love.graphics.printf("Anglerfish Den", nameX, nameY + 22, nameW, "center")
+    else
+        love.graphics.printf(n, nameX, nameY + 22, nameW, "center")
+        if math.floor(love.timer.getTime() * 2) % 2 == 0 then
+            local tw = self.font:getWidth(n)
+            love.graphics.rectangle("fill", nameX + nameW / 2 + tw / 2 + 4, nameY + 22, 2, 16)
+        end
+    end
+    game.mpDraftBoxes = {{x = nameX, y = nameY, w = nameW, h = nameH, key = "name"}}
+
+    -- Mode picker: 3 cards in a row
+    local modeY = 230
+    local modeCardW, modeCardH = 360, 130
+    local gap = 24
+    local startX = (1280 - modeCardW * 3 - gap * 2) / 2
+    game.mpDraftMode = game.mpDraftMode or {}
+    for i, mode in ipairs(MP.MODES) do
+        local x = startX + (i - 1) * (modeCardW + gap)
+        local hover = mx >= x and mx <= x + modeCardW and my >= modeY and my <= modeY + modeCardH
+        local selected = (d.mode == mode.id)
+        local r, g, b
+        if mode.id == "last_stand" then r, g, b = 0.85, 0.4, 0.4
+        elseif mode.id == "rally"    then r, g, b = 0.45, 0.8, 0.95
+        else                              r, g, b = 0.5, 0.9, 0.55 end
+        love.graphics.setColor(r * (selected and 0.55 or (hover and 0.35 or 0.18)),
+                               g * (selected and 0.55 or (hover and 0.35 or 0.18)),
+                               b * (selected and 0.55 or (hover and 0.35 or 0.18)),
+                               0.9)
+        love.graphics.rectangle("fill", x, modeY, modeCardW, modeCardH, 10, 10)
+        love.graphics.setColor(r, g, b, selected and 1 or 0.7)
+        love.graphics.setLineWidth(selected and 3 or 1.5)
+        love.graphics.rectangle("line", x, modeY, modeCardW, modeCardH, 10, 10)
+        love.graphics.setLineWidth(1)
+        love.graphics.setFont(self.bigFont or self.font)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.printf(mode.name, x, modeY + 14, modeCardW, "center")
+        love.graphics.setFont(self.font)
+        love.graphics.setColor(1, 1, 1, 0.85)
+        love.graphics.printf(mode.desc, x + 12, modeY + 60, modeCardW - 24, "center")
+        game.mpDraftMode[i] = {x = x, y = modeY, w = modeCardW, h = modeCardH, id = mode.id}
+    end
+
+    -- Capacity stepper
+    local capY = 390
+    love.graphics.setColor(1, 1, 1, 0.85)
+    love.graphics.printf("LOBBY SIZE", 280, capY + 10, 200, "left")
+    local capH = 50
+    local minusH = mx >= 480 and mx <= 520 and my >= capY and my <= capY + capH
+    love.graphics.setColor(minusH and 1 or 0.4, 0.3, 0.3)
+    love.graphics.rectangle("fill", 480, capY, 40, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf("-", 480, capY + 14, 40, "center")
+    love.graphics.setColor(0.15, 0.2, 0.3, 0.9)
+    love.graphics.rectangle("fill", 526, capY, 100, capH, 6, 6)
+    love.graphics.setColor(1, 1, 0.85)
+    love.graphics.printf(tostring(d.capacity), 526, capY + 14, 100, "center")
+    local plusH = mx >= 632 and mx <= 672 and my >= capY and my <= capY + capH
+    love.graphics.setColor(0.3, plusH and 1 or 0.4, 0.3)
+    love.graphics.rectangle("fill", 632, capY, 40, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf("+", 632, capY + 14, 40, "center")
+    game.mpDraftCapMinus = {x = 480, y = capY, w = 40, h = capH}
+    game.mpDraftCapPlus  = {x = 632, y = capY, w = 40, h = capH}
+
+    -- Difficulty selector
+    local diffY = 460
+    local diff = Difficulty.get(d.difficulty)
+    love.graphics.setColor(1, 1, 1, 0.85)
+    love.graphics.printf("DIFFICULTY", 280, diffY + 10, 200, "left")
+    love.graphics.setColor(0.4, 0.3, 0.7)
+    love.graphics.rectangle("fill", 480, diffY, 40, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf("<", 480, diffY + 14, 40, "center")
+    love.graphics.setColor(diff.color[1] * 0.4, diff.color[2] * 0.4, diff.color[3] * 0.4, 0.9)
+    love.graphics.rectangle("fill", 526, diffY, 280, capH, 6, 6)
+    love.graphics.setColor(diff.color)
+    love.graphics.rectangle("line", 526, diffY, 280, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf(diff.name, 526, diffY + 14, 280, "center")
+    love.graphics.setColor(0.4, 0.3, 0.7)
+    love.graphics.rectangle("fill", 812, diffY, 40, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf(">", 812, diffY + 14, 40, "center")
+    game.mpDraftDiffPrev = {x = 480, y = diffY, w = 40, h = capH}
+    game.mpDraftDiffNext = {x = 812, y = diffY, w = 40, h = capH}
+
+    -- PvP toggle
+    local pvpY = 530
+    local pvpHover = mx >= 280 and mx <= 880 and my >= pvpY and my <= pvpY + capH
+    love.graphics.setColor(d.pvp and 0.95 or 0.18, d.pvp and 0.35 or 0.22, d.pvp and 0.4 or 0.32,
+        pvpHover and 1 or 0.85)
+    love.graphics.rectangle("fill", 280, pvpY, 600, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", 280, pvpY, 600, capH, 6, 6)
+    love.graphics.printf("PVP: " .. (d.pvp and "ON  (crabs hit each other at "
+        .. math.floor(MP.PVP_FACTOR * 100) .. "%)" or "OFF"),
+        280, pvpY + 14, 600, "center")
+    game.mpDraftPvp = {x = 280, y = pvpY, w = 600, h = capH}
+
+    -- Final wave stepper
+    local fwY = 600
+    love.graphics.setColor(1, 1, 1, 0.85)
+    love.graphics.printf("FINAL WAVE", 280, fwY + 10, 200, "left")
+    love.graphics.setColor(0.4, 0.3, 0.7)
+    love.graphics.rectangle("fill", 480, fwY, 40, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf("-", 480, fwY + 14, 40, "center")
+    love.graphics.setColor(0.15, 0.2, 0.3, 0.9)
+    love.graphics.rectangle("fill", 526, fwY, 200, capH, 6, 6)
+    love.graphics.setColor(1, 1, 0.85)
+    local fwLabel = (d.finalWave == 0) and "INFINITE" or tostring(d.finalWave)
+    love.graphics.printf(fwLabel, 526, fwY + 14, 200, "center")
+    love.graphics.setColor(0.4, 0.3, 0.7)
+    love.graphics.rectangle("fill", 732, fwY, 40, capH, 6, 6)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf("+", 732, fwY + 14, 40, "center")
+    game.mpDraftWavePrev = {x = 480, y = fwY, w = 40, h = capH}
+    game.mpDraftWaveNext = {x = 732, y = fwY, w = 40, h = capH}
+
+    -- Bottom buttons
+    local rowY = 660
+    game.mpDraftCreate = mpButton(540, rowY, 200, 50, "CREATE",
+        {0.4, 0.85, 0.55}, mx, my)
+    game.mpDraftBack   = mpButton(1000, rowY, 200, 50, "BACK",
+        {0.5, 0.4, 0.7}, mx, my)
+end
+
+function UI:mpCreateClick(game, x, y)
+    local function within(b) return b and x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h end
+    local d = game.mpDraft
+    for _, m in ipairs(game.mpDraftMode or {}) do
+        if within(m) then d.mode = m.id; return end
+    end
+    if within(game.mpDraftCapMinus) then d.capacity = math.max(MP.MIN_CAP, d.capacity - 1); return end
+    if within(game.mpDraftCapPlus)  then d.capacity = math.min(MP.MAX_CAP, d.capacity + 1); return end
+    if within(game.mpDraftDiffPrev) then d.difficulty = Difficulty.cycle(d.difficulty, -1); return end
+    if within(game.mpDraftDiffNext) then d.difficulty = Difficulty.cycle(d.difficulty,  1); return end
+    if within(game.mpDraftPvp)      then d.pvp = not d.pvp; return end
+    if within(game.mpDraftWavePrev) then
+        if d.finalWave == 0 then d.finalWave = 30
+        elseif d.finalWave > 5 then d.finalWave = d.finalWave - 5
+        else d.finalWave = math.max(5, d.finalWave - 1) end
+        return
+    end
+    if within(game.mpDraftWaveNext) then
+        if d.finalWave == 0 then d.finalWave = 0
+        elseif d.finalWave >= 50 then d.finalWave = 0  -- INFINITE
+        else d.finalWave = d.finalWave + 5 end
+        return
+    end
+    if within(game.mpDraftCreate) then
+        local nm = (d.name and #d.name > 0) and d.name or "Anglerfish Den"
+        MP.publishProfile(game.persist)
+        MP.create(nm, {
+            mode = d.mode, pvp = d.pvp, difficulty = d.difficulty,
+            finalWave = d.finalWave, capacity = d.capacity,
+        })
+        game.state = "mp_lobby"
+        return
+    end
+    if within(game.mpDraftBack) then game.state = "mp_menu"; return end
+end
+
+function UI:mpCreateKey(game, key)
+    if key == "escape" then game.state = "mp_menu"; return end
+    if key == "return" or key == "kpenter" then
+        local d = game.mpDraft
+        local nm = (d.name and #d.name > 0) and d.name or "Anglerfish Den"
+        MP.publishProfile(game.persist)
+        MP.create(nm, {
+            mode = d.mode, pvp = d.pvp, difficulty = d.difficulty,
+            finalWave = d.finalWave, capacity = d.capacity,
+        })
+        game.state = "mp_lobby"
+        return
+    end
+    if key == "backspace" then
+        local s = game.mpDraft.name or ""
+        if #s > 0 then game.mpDraft.name = s:sub(1, #s - 1) end
+        return
+    end
+end
+
+function UI:mpCreateText(game, text)
+    if not text then return end
+    local s = game.mpDraft.name or ""
+    for c in text:gmatch(".") do
+        if #s < 28 and (c:match("[%w%s%p]") and c ~= "\n") then s = s .. c end
+    end
+    game.mpDraft.name = s
+end
+
+-- ----- Live lobby (waiting room) ------------------------------------
+function UI:drawMpLobby(game)
+    love.graphics.clear(0.03, 0.05, 0.10)
+    local mx, my = love.mouse.getPosition()
+    local t = love.timer.getTime()
+
+    love.graphics.setFont(self.titleFont)
+    love.graphics.setColor(0.55, 0.95, 0.7)
+    local lobbyName = (MP.lobby and MP.lobby.name) or "Connecting..."
+    love.graphics.printf(lobbyName, 0, 24, 1280, "center")
+    love.graphics.setFont(self.font)
+
+    -- Code & connection state
+    if MP.lobby and MP.lobby.code then
+        love.graphics.setColor(1, 1, 1, 0.7)
+        love.graphics.printf("CODE", 0, 96, 1280, "center")
+        love.graphics.setFont(self.bigFont or self.font)
+        love.graphics.setColor(0.95, 0.95, 1)
+        love.graphics.printf(MP.lobby.code, 0, 116, 1280, "center")
+        love.graphics.setFont(self.font)
+    elseif not MP.connected then
+        love.graphics.setColor(1, 0.6, 0.4, 0.95)
+        love.graphics.printf(
+            "Multiplayer requires the games.brassey.io portal — desktop LÖVE has no peers.",
+            0, 116, 1280, "center")
+    else
+        love.graphics.setColor(1, 1, 1, 0.55)
+        love.graphics.printf("Waiting for the portal to materialise the room...",
+            0, 116, 1280, "center")
+    end
+
+    -- Settings strip
+    if MP.lobby then
+        local m = MP.modeById(MP.lobby.mode or "last_stand")
+        local diff = Difficulty.get(MP.lobby.difficulty or "normal")
+        love.graphics.setColor(0.85, 0.95, 1, 0.92)
+        love.graphics.printf(string.format(
+            "%s   |   %s   |   PVP %s   |   FINAL WAVE %s   |   %d / %d",
+            m.name,
+            diff.name,
+            MP.lobby.pvp and "ON" or "OFF",
+            MP.lobby.finalWave == 0 and "INFINITE" or tostring(MP.lobby.finalWave or 20),
+            (function() local n = 0; for _ in pairs(MP.peers) do n = n + 1 end; return n end)(),
+            MP.lobby.capacity or 4
+        ), 0, 178, 1280, "center")
+    end
+
+    -- Roster grid: each peer's mini crab + handle
+    local rosterY = 230
+    local cellW, cellH = 220, 240
+    local gap = 16
+    local count = 0
+    for _ in pairs(MP.peers) do count = count + 1 end
+    if count == 0 then count = 1 end
+    local cols = math.min(5, count)
+    if cols < 1 then cols = 1 end
+    local rowW = cellW * cols + gap * (cols - 1)
+    local startX = (1280 - rowW) / 2
+    local i = 0
+    -- show local first
+    local order = {}
+    if MP.localId then order[#order + 1] = MP.localId end
+    for id in pairs(MP.peers) do if id ~= MP.localId then order[#order + 1] = id end end
+    if #order == 0 then order[1] = "self" end
+
+    for _, id in ipairs(order) do
+        local col = i % cols
+        local row = math.floor(i / cols)
+        local x = startX + col * (cellW + gap)
+        local y = rosterY + row * (cellH + gap)
+        love.graphics.setColor(0.10, 0.14, 0.22, 0.85)
+        love.graphics.rectangle("fill", x, y, cellW, cellH, 10, 10)
+        love.graphics.setColor(0.4, 0.7, 0.95, 0.55)
+        love.graphics.rectangle("line", x, y, cellW, cellH, 10, 10)
+        local cosmetics, handle, alive
+        if id == MP.localId or id == "self" then
+            cosmetics = Cosmetics.equipped(game.persist)
+            handle = MP.localHandle
+            alive = true
+        else
+            local p = MP.peers[id]
+            cosmetics = p and p.cosmetics
+            handle = (p and p.handle) or "?"
+            alive = p and p.alive
+        end
+        drawMiniCrab(x + cellW / 2, y + cellH / 2 - 10, 2.0, cosmetics, t, alive)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.printf(handle or "Crab", x, y + cellH - 50, cellW, "center")
+        if id == MP.localId or id == "self" then
+            love.graphics.setColor(0.6, 0.95, 0.7, 0.8)
+            love.graphics.printf("(you)", x, y + cellH - 28, cellW, "center")
+        end
+        i = i + 1
+        if i >= cols * 2 then break end
+    end
+
+    -- Recent events log
+    love.graphics.setColor(1, 1, 1, 0.55)
+    local logY = 540
+    for k = math.max(1, #MP.events - 3), #MP.events do
+        love.graphics.setColor(1, 1, 1, 0.4 + (k / #MP.events) * 0.5)
+        love.graphics.printf(MP.events[k] or "", 0, logY, 1280, "center")
+        logY = logY + 18
+    end
+
+    -- Auto-transition to wave when room phase flips
+    if MP.lobby and MP.lobby.phase == "wave" and MP.lobby.startedAt
+        and not (game._mpStarted == MP.lobby.startedAt) then
+        game._mpStarted = MP.lobby.startedAt
+        game:startMultiplayerRun()
+    end
+
+    -- Bottom buttons
+    local rowY2 = 644
+    game.mpLobbyStart  = mpButton(540, rowY2, 200, 50, "START RUN", {0.4, 0.95, 0.55}, mx, my)
+    game.mpLobbyLeave  = mpButton(1000, rowY2, 200, 50, "LEAVE",     {0.85, 0.35, 0.4}, mx, my)
+end
+
+function UI:mpLobbyClick(game, x, y)
+    local function within(b) return b and x >= b.x and x <= b.x + b.w and y >= b.y and y <= b.y + b.h end
+    if within(game.mpLobbyStart) then
+        if MP.lobby and MP.lobby.roomId then
+            MP.startRun()
+            -- Local transition happens via the phase-watcher in the next draw frame
+        end
+        return
+    end
+    if within(game.mpLobbyLeave) then
+        MP.leave()
+        game.state = "mp_menu"
+        return
+    end
+end
+
+function UI:mpLobbyKey(game, key)
+    if key == "escape" then
+        MP.leave()
+        game.state = "mp_menu"
+        return
+    end
+    if key == "return" or key == "kpenter" then
+        if MP.lobby and MP.lobby.roomId then MP.startRun() end
+    end
 end
 
 return UI

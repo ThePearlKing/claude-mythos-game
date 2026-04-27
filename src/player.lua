@@ -251,7 +251,7 @@ function Player:update(dt, game)
     local effFireRate = self.stats.fireRate
     if self.adrenalineActive then effFireRate = effFireRate * 1.6 end
     if self.overdriveActive then effFireRate = effFireRate * 3.0 end
-    if love.mouse.isDown(1) and not self.laserActive and not self.disabled then
+    if not _chatBlock and love.mouse.isDown(1) and not self.laserActive and not self.disabled then
         if self.stats.weaponType == "railgun" then
             self.railChargeTime = self.railChargeTime + dt
             if self.railChargeTime >= 0.85 then
@@ -282,7 +282,7 @@ function Player:update(dt, game)
         end
         self.railChargeTime = 0
     end
-    if self.stats.weaponType == "laser" and love.mouse.isDown(1) then
+    if self.stats.weaponType == "laser" and not _chatBlock and love.mouse.isDown(1) then
         self.laserActive = true
         self:fireLaser(game, dt)
     else

@@ -14,6 +14,7 @@ local Aesthetics = require("src.aesthetics")
 local Voidsea = require("src.voidsea")
 local Achievements = require("src.achievements")
 local Fx = require("src.fx")
+local MP = require("src.multiplayer")
 
 local Game = {}
 
@@ -93,6 +94,19 @@ function Game:load()
     Audio.sfxVol    = self.persist.sfxVol or 0.5
     -- Apply saved theme (build the one the player has selected)
     Audio:setTheme(self.persist.theme or Playlist.defaultId())
+    -- Multiplayer scaffolding (UI text inputs + create form defaults)
+    self.mpJoinCode = ""
+    self.mpDraft = {
+        name = "", mode = "last_stand", capacity = 4,
+        difficulty = self.persist.difficulty or Difficulty.defaultId(),
+        pvp = false, finalWave = 20,
+    }
+    self.mpRoomBtns = {}
+    self.mpDraftMode = {}
+    self.chat = {open = false, text = ""}
+    -- Probe for portal connectivity in the background; safe no-op offline.
+    pcall(MP.detect)
+    pcall(MP.publishProfile, self.persist)
     self:resetGame()
 end
 
@@ -485,6 +499,17 @@ function Game:endWave()
     -- Offer cards
     local count = 3 + (self.player.stats.extraCards or 0)
     self.player.stats.extraCards = 0 -- reset grimoire bonus after use
+    -- In multiplayer, every player gets their OWN random hand. Seed with the
+    -- lobby id + wave + local userId so each crab rolls a private deck —
+    -- nothing is synced; my picks don't affect yours.
+    if self.isMultiplayer and MP.enabled and MP.lobby and MP.localId then
+        local lobbyHash = 0
+        for c in tostring(MP.lobby.code or MP.lobby.roomId or "lobby"):gmatch(".") do
+            lobbyHash = (lobbyHash * 31 + string.byte(c)) % 2147483647
+        end
+        local seed = (lobbyHash + (self.wave or 0) * 9973 + (MP.localId or 0) * 1009) % 2147483647
+        math.randomseed(seed)
+    end
     self.cardChoices = Cards.pick(count, self.wave, self.player, self.disableEldritch, self.finalWave)
     self.cardArmTime = 0.7 -- cannot click for 0.7s to prevent accidental selection
     self.state = "cards"
@@ -553,6 +578,9 @@ end
 
 function Game:update(dt)
     P:update(dt)
+    -- Multiplayer plumbing runs every frame (lobby browser, lobby, in-wave).
+    pcall(MP.poll, dt)
+    pcall(MP.update, dt, self)
     if self.state == "debugvis" then
         require("src.debugvis").update(self, dt)
     end
@@ -682,9 +710,96 @@ function Game:update(dt)
     end
 
     p:update(dt, self)
+
+    -- ===== Multiplayer per-frame plumbing during a wave =====
+    if self.isMultiplayer and MP.enabled then
+        -- Apply queued PvP damage from peers (clamped, runs through normal damage so
+        -- thorns/dodge etc. still trigger but at reduced potency).
+        local sess = MP.session
+        if sess and (sess.incomingHit or 0) > 0 then
+            p:takeDamage(sess.incomingHit, "pvp")
+            sess.incomingHit = 0
+        end
+        -- Revive event delivered from a teammate
+        if sess and sess.requestRevive then
+            sess.requestRevive = false
+            sess.local_dead = false
+            p.hp = math.max(1, math.floor(p.maxHp * 0.5))
+            p.invuln = 1.5
+            sess.respawnTimer = 0
+            P:text(p.x, p.y - 30, "REVIVED!", {0.5, 1, 0.7}, 1.5)
+            self.state = "wave"
+        end
+        -- Endless-mode respawn timer: restore HP after RESPAWN_TIME elapses.
+        if sess and sess.local_dead and self.mpMode == "endless" then
+            sess.respawnTimer = (sess.respawnTimer or 0) - dt
+            if sess.respawnTimer <= 0 then
+                sess.local_dead = false
+                p.hp = p.maxHp
+                p.x, p.y = 640, 360
+                p.invuln = 2.0
+                P:text(640, 320, "RESPAWN", {0.5, 1, 0.7}, 1.2)
+                self.state = "wave"
+            end
+        end
+        -- Rally-mode revive interaction: when our crab is alive, hold R near a
+        -- downed peer to revive them.
+        if sess and not sess.local_dead and self.mpMode == "rally" and p.hp > 0 then
+            if love.keyboard.isDown("r") then
+                local target = MP.nearestDownedPeer(p.x, p.y, 60)
+                if target then
+                    if sess.revivePartner ~= target then
+                        sess.revivePartner = target
+                        sess.reviveProgress = 0
+                    end
+                    sess.reviveProgress = (sess.reviveProgress or 0) + dt
+                    if sess.reviveProgress >= MP.REVIVE_HOLD then
+                        MP.sendRevive(target)
+                        sess.revivePartner = nil
+                        sess.reviveProgress = 0
+                        P:text(p.x, p.y - 32, "REVIVED ALLY", {0.6, 0.95, 1}, 1.5)
+                    end
+                else
+                    sess.revivePartner = nil; sess.reviveProgress = 0
+                end
+            else
+                sess.revivePartner = nil; sess.reviveProgress = 0
+            end
+        end
+        -- Position broadcast (rate-limited inside MP.sendPos)
+        MP.sendPos(p, self.wave or 0)
+    end
+
+    -- ===== Death handling =====
     if p.hp <= 0 then
-        self.state = "gameover"
-        self.endTime = 0
+        if self.isMultiplayer and MP.enabled and not (MP.session and MP.session.local_dead) then
+            -- Tell teammates we're down. The actual gameover branch only fires
+            -- when every player in the lobby is also down (last_stand/rally),
+            -- or when respawn fails to restore us in endless mode.
+            local sess = MP.session
+            sess.local_dead = true
+            sess.respawnTimer = MP.RESPAWN_TIME
+            MP.announceDeath()
+            P:text(p.x, p.y - 22, "DOWN!", {1, 0.4, 0.4}, 1.5)
+            -- last_stand: instant death, can't be revived
+            -- rally: stays down until a teammate revives (no respawn timer)
+            -- endless: respawn timer ticks above
+            if self.mpMode == "rally" then sess.respawnTimer = 0 end
+        end
+        local mpStillAlive = self.isMultiplayer and MP.enabled
+            and (MP.aliveCount(false) > 0)
+        if mpStillAlive then
+            -- Stay in wave as a spectator-ghost. The HP-clamp prevents repeated
+            -- death triggers, and we let the camera and rendering continue.
+            p.hp = 0
+            p.invuln = 999
+            -- Skip below the gameover transition
+        else
+            self.state = "gameover"
+            self.endTime = 0
+        end
+    end
+    if p.hp <= 0 and self.state == "gameover" then
         if p.eldritch and p.eldritch.cthulhu and p.eldritch.cthulhu.phase == "fire" then
             Achievements.fire("cthulhu_consumed")
             -- Consumed by Cthulhu = death. Shatter once, then deep violet
@@ -944,6 +1059,18 @@ function Game:update(dt)
                 end
             end
         end
+        -- PvP: bullets that miss enemies can still graze peer crabs at a
+        -- reduced damage factor. We only emit the hit event; the receiving
+        -- client applies actual damage to themselves so authority stays local.
+        if not b.dead and self.isMultiplayer and self.mpPvp then
+            local pid = MP.peerHitTest(b.x, b.y, b.size or 4)
+            if pid then
+                local hitDmg = (b.damage or 0) * MP.PVP_FACTOR
+                MP.sendHit(pid, hitDmg)
+                P:spawn(b.x, b.y, 4, {1, 0.4, 0.4}, 120, 0.25, 3)
+                if not b.pierce or b.pierce <= 0 then b.dead = true end
+            end
+        end
         -- Churgly boss segment + head collision (acts like an enemy)
         if not b.dead and self.churglyBoss and self.churglyBoss.phase == "fight" then
             local dmg = b.damage or 0
@@ -1040,6 +1167,12 @@ function Game:draw()
         UI:drawAesthetics(self); goto overlay
     elseif self.state == "customise" then
         UI:drawCustomise(self); goto overlay
+    elseif self.state == "mp_menu" then
+        UI:drawMpMenu(self); goto overlay
+    elseif self.state == "mp_create" then
+        UI:drawMpCreate(self); goto overlay
+    elseif self.state == "mp_lobby" then
+        UI:drawMpLobby(self); goto overlay
     elseif self.state == "voidsea" then
         Voidsea.draw(self); goto overlay
     elseif self.state == "debugvis" then
@@ -1055,7 +1188,11 @@ function Game:draw()
 
     -- Entities
     for _, e in ipairs(self.enemies) do e:draw() end
+    -- Render peer crabs UNDER the local player so the local crab still reads
+    -- as the focus when bodies overlap.
+    if self.isMultiplayer then pcall(MP.draw, self) end
     self.player:draw()
+    if self.isMultiplayer then pcall(MP.drawLocalChat, self) end
     for _, b in ipairs(self.bullets) do b:draw() end
     for _, b in ipairs(self.enemyBullets) do b:draw() end
     -- Explosive shockwaves
@@ -1608,6 +1745,7 @@ function Game:pickCard(index)
     end
     Audio:play("select")
     P:text(self.player.x, self.player.y, c.name, Cards.rarityColor(c.rarity), 2)
+    if self.isMultiplayer and MP.enabled then pcall(MP.announceCard, c) end
     self:beginWave(self.wave + 1)
     self.state = "wave"
 end
@@ -1778,11 +1916,19 @@ function Game:keypressed(key)
             self:openOptions()
         elseif key == "k" then
             self:openCustomise()
+        elseif key == "m" then
+            self:openMultiplayer()
         elseif key == "left" then
             self:cycleDifficulty(-1)
         elseif key == "right" then
             self:cycleDifficulty(1)
         end
+    elseif self.state == "mp_menu" then
+        UI:mpMenuKey(self, key)
+    elseif self.state == "mp_create" then
+        UI:mpCreateKey(self, key)
+    elseif self.state == "mp_lobby" then
+        UI:mpLobbyKey(self, key)
     elseif self.state == "custom" then
         if key == "escape" then self.state = "menu" end
         if key == "return" or key == "kpenter" then self:startCustom() end
@@ -1821,6 +1967,7 @@ function Game:keypressed(key)
         if key == "return" or key == "kpenter" then
             self:startRun(self.customConfig)
         elseif key == "m" then
+            if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
             self.state = "menu"
             Audio:stopMusic()
             Fx.clearAll()
@@ -1833,11 +1980,13 @@ function Game:keypressed(key)
             self._resumeTo = nil
         elseif key == "m" then
             self:cashOutInfinite()
+            if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
             self.state = "menu"
             Audio:stopMusic()
             Fx.clearAll()
         elseif key == "n" then
             -- Abandon without banking (infinite mode only uses this)
+            if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
             self.state = "menu"
             Audio:stopMusic()
             Fx.clearAll()
@@ -1853,6 +2002,30 @@ function Game:keypressed(key)
             self:skipCard()
         end
     elseif self.state == "wave" then
+        -- Multiplayer chat overlay intercepts everything while it's open
+        local chat = self.chat
+        if self.isMultiplayer and chat and chat.open then
+            if key == "return" or key == "kpenter" then
+                local msg = (chat.text or ""):match("^%s*(.-)%s*$")
+                if msg and #msg > 0 then MP.sendChat(msg) end
+                chat.open = false; chat.text = ""
+            elseif key == "escape" then
+                chat.open = false; chat.text = ""
+            elseif key == "backspace" then
+                local s = chat.text or ""
+                if #s > 0 then chat.text = s:sub(1, #s - 1) end
+            end
+            return
+        end
+        -- Open the chat overlay (T or /). Multiplayer-only — desktop solo
+        -- doesn't surface chat at all.
+        if self.isMultiplayer and (key == "t" or key == "/") then
+            self.chat = self.chat or {open = false, text = ""}
+            self.chat.open = true
+            self.chat.text = ""
+            self.chat._justOpened = true
+            return
+        end
         if key == "space" then
             self.player:dash()
         elseif key == "q" then
@@ -1941,11 +2114,12 @@ function Game:mousepressed(x, y, button)
         local mb = self.menuButtons or {}
         for _, btn in ipairs(mb) do
             if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
-                if     btn.action == "start"     then self:startRun()
-                elseif btn.action == "custom"    then self:openCustom()
-                elseif btn.action == "options"   then self:openOptions()
-                elseif btn.action == "customise" then self:openCustomise()
-                elseif btn.action == "quit"      then love.event.quit() end
+                if     btn.action == "start"       then self:startRun()
+                elseif btn.action == "custom"      then self:openCustom()
+                elseif btn.action == "options"     then self:openOptions()
+                elseif btn.action == "customise"   then self:openCustomise()
+                elseif btn.action == "multiplayer" then self:openMultiplayer()
+                elseif btn.action == "quit"        then love.event.quit() end
                 return
             end
         end
@@ -1963,6 +2137,12 @@ function Game:mousepressed(x, y, button)
         UI:aestheticsClick(self, x, y)
     elseif self.state == "customise" and button == 1 then
         UI:customiseClick(self, x, y)
+    elseif self.state == "mp_menu" and button == 1 then
+        UI:mpMenuClick(self, x, y)
+    elseif self.state == "mp_create" and button == 1 then
+        UI:mpCreateClick(self, x, y)
+    elseif self.state == "mp_lobby" and button == 1 then
+        UI:mpLobbyClick(self, x, y)
     elseif self.state == "paused" and button == 1 then
         for _, btn in ipairs(self.pauseButtons or {}) do
             if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
@@ -1971,11 +2151,13 @@ function Game:mousepressed(x, y, button)
                     self._resumeTo = nil
                 elseif btn.action == "menu" then
                     self:cashOutInfinite()
+                    if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
                     self.state = "menu"
                     Audio:stopMusic()
                     Fx.clearAll()
                 elseif btn.action == "menu_discard" then
                     -- Abandon the infinite run without recording progress
+                    if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
                     self.state = "menu"
                     Audio:stopMusic()
                     Fx.clearAll()
@@ -1994,6 +2176,7 @@ function Game:mousepressed(x, y, button)
                 if btn.action == "again" then
                     self:startRun(self.customConfig)
                 elseif btn.action == "menu" then
+                    if self.isMultiplayer then MP.leave(); self.isMultiplayer = false end
                     self.state = "menu"
                     Audio:stopMusic()
                     Fx.clearAll()
@@ -2098,6 +2281,49 @@ Game.customDefaults = {
     startEldritch = 0,
     disableEldritch = 0,
 }
+
+function Game:openMultiplayer()
+    self.state = "mp_menu"
+    self.mpJoinCode = self.mpJoinCode or ""
+    pcall(MP.detect)
+    pcall(MP.requestList)
+    pcall(MP.publishProfile, self.persist)
+end
+
+function Game:openMpCreate()
+    self.state = "mp_create"
+    self.mpDraft = self.mpDraft or {
+        name = "", mode = "last_stand", capacity = 4,
+        difficulty = self.persist.difficulty or Difficulty.defaultId(),
+        pvp = false, finalWave = 20,
+    }
+end
+
+-- Each MP client runs its own simulation, but we share the lobby's mode +
+-- difficulty + final-wave so everyone is fighting the same shape of run.
+-- Cards roll from a per-player seed (lobby × wave × userId) so every crab
+-- gets their own random hand.
+function Game:startMultiplayerRun()
+    local cfg = {
+        finalWave = (MP.lobby and MP.lobby.finalWave) or 20,
+    }
+    self.customConfig = nil
+    self.difficultyApplied = Difficulty.get((MP.lobby and MP.lobby.difficulty) or "normal")
+    self.haunted = false
+    self.shrimpTimer = 0
+    self.mpRun = true
+    self:resetGame()
+    Fx.clearAll()
+    -- Tag the run so card-pick + death handling know we're in MP
+    self.isMultiplayer = true
+    self.mpMode = (MP.lobby and MP.lobby.mode) or "last_stand"
+    self.mpPvp = (MP.lobby and MP.lobby.pvp) or false
+    MP.beginSession()
+    self.state = "wave"
+    self:beginWave((self.wave or 0) + 1)
+    Audio:playMusic("normal")
+    Achievements.fire("mp_first_run")
+end
 
 function Game:openCustom()
     self.customDraft = {}

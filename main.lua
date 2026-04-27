@@ -238,6 +238,28 @@ function love.mousereleased(x, y, button)
     Game:mousereleased(gx, gy, button)
 end
 
+function love.textinput(text)
+    -- Forward to MP lobby/create text fields when those screens are open
+    if Game.state == "mp_menu" then
+        local UI = require("src.ui")
+        UI:mpMenuText(Game, text)
+    elseif Game.state == "mp_create" then
+        local UI = require("src.ui")
+        UI:mpCreateText(Game, text)
+    elseif Game.state == "wave" and Game.chat and Game.chat.open then
+        -- Skip the very first character that opened the chat (T or /)
+        if Game.chat._justOpened then
+            Game.chat._justOpened = false
+            return
+        end
+        local s = Game.chat.text or ""
+        for c in text:gmatch(".") do
+            if #s < 120 and c ~= "\n" then s = s .. c end
+        end
+        Game.chat.text = s
+    end
+end
+
 function love.wheelmoved(x, y)
     -- love.js forwards raw WheelEvent.deltaY (often 100+ pixels per tick)
     -- instead of the ±1 ticks native LÖVE sends. Clamp so the web build
