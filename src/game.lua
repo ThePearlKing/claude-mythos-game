@@ -257,29 +257,39 @@ function Game:recordRunResult(isWin)
     -- Multiplayer runs do NOT contribute to solo career stats (win streak,
     -- total runs/wins, reputation, shard peak). Kills + eldritchMax above
     -- still bank because they drive cosmetic unlocks per-account, but the
-    -- competitive solo metrics stay untouched.
-    if self.isMultiplayer then return end
-    self.persist.totalRuns = (self.persist.totalRuns or 0) + 1
-    if isWin then
-        self.persist.winStreak = (self.persist.winStreak or 0) + 1
-        self.persist.totalWins = (self.persist.totalWins or 0) + 1
-        if self.persist.winStreak > (self.persist.bestStreak or 0) then
-            self.persist.bestStreak = self.persist.winStreak
-        end
-    else
-        -- Infinite mode deaths don't break your win streak — you're grinding, not trying to win.
-        if self.finalWave and self.finalWave > 0 then
-            self.persist.winStreak = 0
+    -- competitive solo metrics (winStreak / bestStreak / totalRuns /
+    -- totalWins) stay untouched in multiplayer.
+    if not self.isMultiplayer then
+        self.persist.totalRuns = (self.persist.totalRuns or 0) + 1
+        if isWin then
+            self.persist.winStreak = (self.persist.winStreak or 0) + 1
+            self.persist.totalWins = (self.persist.totalWins or 0) + 1
+            if self.persist.winStreak > (self.persist.bestStreak or 0) then
+                self.persist.bestStreak = self.persist.winStreak
+            end
+        else
+            -- Infinite mode deaths don't break your win streak — you're grinding, not trying to win.
+            if self.finalWave and self.finalWave > 0 then
+                self.persist.winStreak = 0
+            end
         end
     end
-    -- Global reputation drifts toward run's reputation, weighted by progress
+    -- Global reputation drifts toward run's reputation, weighted by progress.
+    -- In multiplayer the *delta* (the gain or loss this run) is split evenly
+    -- by lobby size — your reputation still moves, just proportionally.
     local runRep = self.player.reputation
     local progress = math.min(1, self.wave / math.max(1, self.finalWave))
     local weight = 0.25 + progress * 0.25 -- 25-50% blend
     if isWin then weight = weight + 0.1 end
     local g = self.persist.globalRep or 50
-    g = g * (1 - weight) + runRep * weight
-    self.persist.globalRep = math.max(0, math.min(100, g))
+    local newG = g * (1 - weight) + runRep * weight
+    if self.isMultiplayer and MP.enabled then
+        local n = MP.lobbySize() or 1
+        if n > 1 then
+            newG = g + (newG - g) / n
+        end
+    end
+    self.persist.globalRep = math.max(0, math.min(100, newG))
     self.persist.globalRepMax = math.max(self.persist.globalRepMax or 50, self.persist.globalRep)
     -- Persist the run's eldritch peak so a mid-run climb counts toward the
     -- next shard even after death/quit. Skipped if a shard was already
@@ -524,16 +534,8 @@ end
 function Game:onKill(enemy, source)
     local sm = (source and source.stats and source.stats.scoreMult) or 1
     local gain = math.floor(enemy.score * sm)
-    -- Multiplayer: score is split evenly by lobby size so a 4-crab run
-    -- gives each player a quarter of the normal points per kill. Floor
-    -- the divided amount but always award at least 1 so single kills
-    -- don't drop to zero.
-    if self.isMultiplayer and MP.enabled then
-        local n = MP.lobbySize()
-        if n > 1 then
-            gain = math.max(1, math.floor(gain / n))
-        end
-    end
+    -- Multiplayer: per-kill score awards stay full. Only the reputation
+    -- gain/loss at run-end is split by lobby size (see recordRunResult).
     self.player.score = self.player.score + gain
     self.waveEnemiesKilled = self.waveEnemiesKilled + 1
     P:text(enemy.x, enemy.y - 10, "+"..gain, {1,0.9,0.3}, 0.8)
