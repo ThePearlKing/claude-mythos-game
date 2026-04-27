@@ -722,14 +722,19 @@ function UI:drawOptions(game)
 
     -- ============================================================
     -- LEFT COLUMN: Volume sliders (compact stack)
+    -- The section header used the 42px bigFont and sat just 22px above
+    -- the first slider row, which made it bleed into row 1. Use the
+    -- regular font for the header and pad the rows down to give clean
+    -- vertical separation.
     -- ============================================================
-    local volX, volY, volW, volH = 60, 160, 580, 60
+    local volX, volY, volW, volH = 60, 200, 580, 60
     love.graphics.setColor(0.08, 0.12, 0.22, 0.85)
-    love.graphics.rectangle("fill", volX - 12, volY - 26, volW + 24, volH * 3 + 38, 12, 12)
-    love.graphics.setColor(0.4, 0.8, 1, 0.9)
-    love.graphics.setFont(self.bigFont or self.font)
-    love.graphics.printf("AUDIO", volX, volY - 22, volW, "left")
+    love.graphics.rectangle("fill", volX - 12, volY - 50, volW + 24, volH * 3 + 64, 12, 12)
+    love.graphics.setColor(0.4, 0.8, 1, 0.95)
     love.graphics.setFont(self.font)
+    love.graphics.printf("AUDIO", volX, volY - 42, volW, "left")
+    love.graphics.setColor(0.4, 0.8, 1, 0.35)
+    love.graphics.rectangle("fill", volX, volY - 18, 60, 2)
     for i, row in ipairs(optionsRows) do
         local y = volY + (i - 1) * volH
         love.graphics.setColor(0.12, 0.18, 0.3, 0.9)
@@ -767,17 +772,20 @@ function UI:drawOptions(game)
     end
 
     -- ============================================================
-    -- RIGHT COLUMN: Aim Mode toggle (tall, prominent)
+    -- RIGHT COLUMN: Aim Mode toggle (tall, prominent). Header uses the
+    -- regular font for the same reason — bigFont was bleeding into the
+    -- toggle button below it.
     -- ============================================================
     local aimMode = (game.persist.aimMode or 0) == 1
-    local amX, amY, amW, amH = 700, 134, 520, 196
+    local amX, amY, amW, amH = 700, 200, 520, 196
     local amHover = mx >= amX and mx <= amX + amW and my >= amY and my <= amY + amH
     love.graphics.setColor(0.08, 0.12, 0.22, 0.85)
-    love.graphics.rectangle("fill", amX - 12, amY - 26, amW + 24, amH + 38, 12, 12)
-    love.graphics.setColor(0.4, 0.8, 1, 0.9)
-    love.graphics.setFont(self.bigFont or self.font)
-    love.graphics.printf("CONTROLS", amX, amY - 22, amW, "left")
+    love.graphics.rectangle("fill", amX - 12, amY - 50, amW + 24, amH + 64, 12, 12)
+    love.graphics.setColor(0.4, 0.8, 1, 0.95)
     love.graphics.setFont(self.font)
+    love.graphics.printf("CONTROLS", amX, amY - 42, amW, "left")
+    love.graphics.setColor(0.4, 0.8, 1, 0.35)
+    love.graphics.rectangle("fill", amX, amY - 18, 80, 2)
     love.graphics.setColor(aimMode and 0.4 or 0.2, aimMode and 0.7 or 0.4, aimMode and 0.95 or 0.6,
         amHover and 1 or 0.92)
     love.graphics.rectangle("fill", amX, amY, amW, 70, 10, 10)
@@ -4051,22 +4059,54 @@ function UI:drawMpMenu(game)
     love.graphics.printf("Pick a public lobby, paste a code, or host your own.",
         0, 110, 1280, "center")
 
-    if MP.probed and not MP.connected then
-        love.graphics.setColor(0.18, 0.04, 0.04, 0.95)
-        love.graphics.rectangle("fill", 80, 132, 1120, 56, 8, 8)
-        love.graphics.setColor(1, 0.55, 0.35, 1)
-        love.graphics.rectangle("line", 80, 132, 1120, 56, 8, 8)
-        love.graphics.setColor(1, 0.85, 0.5)
-        love.graphics.printf("YOU'RE RUNNING LOCALLY — NOT ON THE PORTAL", 80, 142, 1120, "center")
-        love.graphics.setColor(1, 0.85, 0.7, 0.9)
-        love.graphics.printf("Multiplayer needs the games.brassey.io wrapper. Open Claude: Mythos there to host or join.",
-            80, 164, 1120, "center")
-    elseif not MP.probed then
+    -- Three layouts:
+    --   1. probing   — small "checking..." line, no controls yet
+    --   2. local     — full-screen offline notice replaces the controls
+    --   3. connected — normal join box + lobby list + actions
+    if not MP.probed then
         love.graphics.setColor(1, 1, 1, 0.55)
-        love.graphics.printf("Probing portal connection…", 0, 138, 1280, "center")
+        love.graphics.printf("Probing portal connection…", 0, 320, 1280, "center")
+        game.mpJoinBox, game.mpJoinBtn = nil, nil
+        game.mpRoomBtns = {}
+        game.mpCreateBtn = nil
+        game.mpRefreshBtn = mpButton(80, 624, 200, 50, "REFRESH", {0.3, 0.55, 0.85}, mx, my)
+        game.mpBackBtn    = mpButton(1000, 624, 200, 50, "BACK",   {0.5, 0.4, 0.7}, mx, my)
+        return
     end
 
-    -- Code input
+    if not MP.connected then
+        -- Centered offline placard, plenty of vertical room, no other UI.
+        local boxX, boxY, boxW, boxH = 160, 200, 960, 320
+        love.graphics.setColor(0.18, 0.04, 0.04, 0.92)
+        love.graphics.rectangle("fill", boxX, boxY, boxW, boxH, 14, 14)
+        love.graphics.setColor(1, 0.55, 0.35, 1)
+        love.graphics.setLineWidth(2)
+        love.graphics.rectangle("line", boxX, boxY, boxW, boxH, 14, 14)
+        love.graphics.setLineWidth(1)
+        love.graphics.setFont(self.bigFont or self.font)
+        love.graphics.setColor(1, 0.85, 0.5)
+        love.graphics.printf("YOU'RE RUNNING LOCALLY", boxX, boxY + 50, boxW, "center")
+        love.graphics.printf("NOT ON THE PORTAL", boxX, boxY + 96, boxW, "center")
+        love.graphics.setFont(self.font)
+        love.graphics.setColor(1, 0.9, 0.78, 0.95)
+        love.graphics.printf("Multiplayer needs the games.brassey.io wrapper.",
+            boxX + 40, boxY + 168, boxW - 80, "center")
+        love.graphics.printf("Open Claude: Mythos there to host or join a lobby.",
+            boxX + 40, boxY + 196, boxW - 80, "center")
+        love.graphics.setColor(1, 1, 1, 0.45)
+        love.graphics.printf("(everything else still works locally — singleplayer, custom mode, cosmetics…)",
+            boxX + 40, boxY + 248, boxW - 80, "center")
+        -- Wipe interactive bounds so stale clicks can't fire on hidden controls
+        game.mpJoinBox, game.mpJoinBtn = nil, nil
+        game.mpRoomBtns = {}
+        game.mpCreateBtn = nil
+        -- Only refresh + back live at the bottom
+        game.mpRefreshBtn = mpButton(80, 624, 200, 50, "REFRESH", {0.3, 0.55, 0.85}, mx, my)
+        game.mpBackBtn    = mpButton(1000, 624, 200, 50, "BACK",   {0.5, 0.4, 0.7}, mx, my)
+        return
+    end
+
+    -- Connected layout
     local codeBoxX, codeBoxY, codeBoxW, codeBoxH = 360, 178, 360, 50
     love.graphics.setColor(0.12, 0.16, 0.26, 0.9)
     love.graphics.rectangle("fill", codeBoxX, codeBoxY, codeBoxW, codeBoxH, 8, 8)
@@ -4090,8 +4130,7 @@ function UI:drawMpMenu(game)
     game.mpJoinBtn = mpButton(codeBoxX + codeBoxW + 12, codeBoxY, 180, codeBoxH,
         "JOIN", {0.3, 0.7, 0.95}, mx, my)
 
-    -- Public room list
-    local listX, listY, listW = 80, 250, 1120
+    local listX, listY, listW = 80, 270, 1120
     local rowH = 56
     local rooms = MP.list or {}
     love.graphics.setColor(1, 1, 1, 0.7)
@@ -4108,7 +4147,7 @@ function UI:drawMpMenu(game)
         love.graphics.printf("No public lobbies right now.", listX, listY + rowH, listW, "center")
     else
         for i, r in ipairs(rooms) do
-            if i > 6 then break end
+            if i > 5 then break end
             local y = listY + (i - 1) * (rowH + 8)
             local hover = mx >= listX and mx <= listX + listW and my >= y and my <= y + rowH
             love.graphics.setColor(hover and 0.18 or 0.10, 0.16, 0.28, 0.9)
@@ -4135,7 +4174,6 @@ function UI:drawMpMenu(game)
         end
     end
 
-    -- Bottom action row: refresh / create / back
     local rowY = 624
     game.mpRefreshBtn = mpButton(80, rowY, 200, 50, "REFRESH",   {0.3, 0.55, 0.85}, mx, my)
     game.mpCreateBtn  = mpButton(540, rowY, 200, 50, "HOST LOBBY", {0.4, 0.85, 0.55}, mx, my)
