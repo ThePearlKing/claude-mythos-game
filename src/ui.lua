@@ -2260,7 +2260,15 @@ local function drawTrailPreview(x, y, scale, trail, t)
     love.graphics.pop()
 end
 
+local DEFAULT_COSMETICS = {
+    body = "orange", eye = "normal", claw = "normal",
+    hat = "none", trail = "none", gun = "pistol",
+}
 local function drawPreviewCrab(x, y, scale, cosmetics, t)
+    -- Multiplayer peers can briefly have no cosmetics yet (their public
+    -- profile hasn't been fetched), so fall back to the default loadout
+    -- instead of crashing on cosmetics.trail.
+    cosmetics = cosmetics or DEFAULT_COSMETICS
     -- Render the trail BEHIND the crab.
     drawTrailPreview(x, y, scale, cosmetics.trail, t)
     -- Slug tail preview: only when the "slug" TRAIL is equipped (body-independent).
@@ -4589,6 +4597,11 @@ function UI:drawMpLobby(game)
         -- Use the canonical preview-crab renderer so lobby roster shows the
         -- exact customised skin (body pattern, eyes, claws, hat, trail, gun)
         -- the player will actually run with — not the simplified mini-crab.
+        -- Stub cosmetics until peer.cosmetics arrives via the profile fetch.
+        cosmetics = cosmetics or {
+            body = "orange", eye = "normal", claw = "normal",
+            hat = "none", trail = "none", gun = "pistol",
+        }
         if alive == false then love.graphics.setColor(1, 1, 1, 0.5) end
         drawPreviewCrab(x + cellW / 2, y + cellH / 2 - 10, 1.7, cosmetics, t)
         love.graphics.setColor(1, 1, 1, 1)
