@@ -816,6 +816,21 @@ function MP.aliveCount(localAlive)
     return n
 end
 
+-- Total roster size (including the local crab and downed peers). Used to
+-- split score by lobby size. Falls back to 1 when MP isn't engaged so
+-- callers can divide unconditionally.
+function MP.lobbySize()
+    if not MP.enabled then return 1 end
+    local n = 0
+    local sawSelf = false
+    for id, _ in pairs(MP.peers) do
+        n = n + 1
+        if id == MP.localId then sawSelf = true end
+    end
+    if not sawSelf then n = n + 1 end
+    return math.max(1, n)
+end
+
 function MP.nearestDownedPeer(x, y, r)
     local best, bestD = nil, r * r
     for id, p in pairs(MP.peers) do

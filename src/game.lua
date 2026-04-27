@@ -254,6 +254,11 @@ function Game:recordRunResult(isWin)
     end
     Save.save(self.persist)
     if self.isCustom then return end
+    -- Multiplayer runs do NOT contribute to solo career stats (win streak,
+    -- total runs/wins, reputation, shard peak). Kills + eldritchMax above
+    -- still bank because they drive cosmetic unlocks per-account, but the
+    -- competitive solo metrics stay untouched.
+    if self.isMultiplayer then return end
     self.persist.totalRuns = (self.persist.totalRuns or 0) + 1
     if isWin then
         self.persist.winStreak = (self.persist.winStreak or 0) + 1
@@ -519,6 +524,16 @@ end
 function Game:onKill(enemy, source)
     local sm = (source and source.stats and source.stats.scoreMult) or 1
     local gain = math.floor(enemy.score * sm)
+    -- Multiplayer: score is split evenly by lobby size so a 4-crab run
+    -- gives each player a quarter of the normal points per kill. Floor
+    -- the divided amount but always award at least 1 so single kills
+    -- don't drop to zero.
+    if self.isMultiplayer and MP.enabled then
+        local n = MP.lobbySize()
+        if n > 1 then
+            gain = math.max(1, math.floor(gain / n))
+        end
+    end
     self.player.score = self.player.score + gain
     self.waveEnemiesKilled = self.waveEnemiesKilled + 1
     P:text(enemy.x, enemy.y - 10, "+"..gain, {1,0.9,0.3}, 0.8)
@@ -2304,9 +2319,6 @@ end
 -- Cards roll from a per-player seed (lobby × wave × userId) so every crab
 -- gets their own random hand.
 function Game:startMultiplayerRun()
-    local cfg = {
-        finalWave = (MP.lobby and MP.lobby.finalWave) or 20,
-    }
     self.customConfig = nil
     self.difficultyApplied = Difficulty.get((MP.lobby and MP.lobby.difficulty) or "normal")
     self.haunted = false
@@ -2318,6 +2330,10 @@ function Game:startMultiplayerRun()
     self.isMultiplayer = true
     self.mpMode = (MP.lobby and MP.lobby.mode) or "last_stand"
     self.mpPvp = (MP.lobby and MP.lobby.pvp) or false
+    -- True endless: lobby's finalWave wins over persist.infiniteMode. 0 means
+    -- the run continues past OpenClaw exactly the same way the solo Infinite
+    -- toggle does — same logic, same cash-out path.
+    self.finalWave = (MP.lobby and MP.lobby.finalWave) or 20
     MP.beginSession()
     self.state = "wave"
     self:beginWave((self.wave or 0) + 1)
