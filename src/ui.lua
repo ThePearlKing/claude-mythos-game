@@ -4132,7 +4132,24 @@ function UI:drawMpMenu(game)
 
     local listX, listY, listW = 80, 270, 1120
     local rowH = 56
-    local rooms = MP.list or {}
+    -- Filter the raw room list FIRST so the header count matches the
+    -- visible count. Hide rooms that are dead, locked, already started,
+    -- empty, or in this client's local hide list.
+    local rawRooms = MP.list or {}
+    local rooms = {}
+    for _, r in ipairs(rawRooms) do
+        local rs = r.state or {}
+        local phase = rs.phase or "lobby"
+        local locked = (rs.locked == 1) or (rs.locked == true)
+        local deleted = (rs.deleted == 1) or (rs.deleted == true)
+        local members = (r.memberCount or r.onlineCount or r.members or 0)
+        local hidden = MP.isHidden and MP.isHidden(r.code, game.persist)
+        if not locked and not deleted and not hidden
+           and phase == "lobby" and members > 0 then
+            rooms[#rooms + 1] = r
+        end
+    end
+
     love.graphics.setColor(1, 1, 1, 0.7)
     love.graphics.printf("PUBLIC LOBBIES", listX, listY - 28, listW, "left")
     love.graphics.setColor(1, 1, 1, 0.4)
@@ -4144,27 +4161,8 @@ function UI:drawMpMenu(game)
         love.graphics.setColor(0.6, 0.6, 0.7, 0.8)
         love.graphics.rectangle("line", listX, listY, listW, rowH * 3, 6, 6)
         love.graphics.setColor(0.6, 0.6, 0.7, 0.6)
-        love.graphics.printf("No public lobbies right now.", listX, listY + rowH, listW, "center")
+        love.graphics.printf("No open lobbies right now.", listX, listY + rowH, listW, "center")
     else
-        -- Hide rooms that are dead, locked, or already started so the
-        -- list only shows lobbies you can actually join.
-        local visible = {}
-        for _, r in ipairs(rooms) do
-            local rs = r.state or {}
-            local phase = rs.phase or "lobby"
-            local locked = (rs.locked == 1) or (rs.locked == true)
-            local deleted = (rs.deleted == 1) or (rs.deleted == true)
-            local members = (r.memberCount or r.onlineCount or r.members or 0)
-            if not locked and not deleted and phase == "lobby" and members > 0 then
-                visible[#visible + 1] = r
-            end
-        end
-        rooms = visible
-        if #rooms == 0 then
-            love.graphics.setColor(0.6, 0.6, 0.7, 0.6)
-            love.graphics.printf("No open lobbies right now.",
-                listX, listY + rowH, listW, "center")
-        end
         for i, r in ipairs(rooms) do
             if i > 5 then break end
             local y = listY + (i - 1) * (rowH + 8)
@@ -4612,8 +4610,14 @@ function UI:drawMpLobby(game)
 
     -- Bottom buttons
     local rowY2 = 644
-    game.mpLobbyStart  = mpButton(540, rowY2, 200, 50, "START RUN", {0.4, 0.95, 0.55}, mx, my)
-    game.mpLobbyLeave  = mpButton(1000, rowY2, 200, 50, "LEAVE",     {0.85, 0.35, 0.4}, mx, my)
+    game.mpLobbyStart = mpButton(200, rowY2, 220, 50, "START RUN",
+        {0.4, 0.95, 0.55}, mx, my)
+    local locked = MP.lobby and MP.lobby.locked
+    game.mpLobbyLock  = mpButton(540, rowY2, 220, 50,
+        locked and "UNLOCK" or "LOCK LOBBY",
+        locked and {0.95, 0.7, 0.3} or {0.5, 0.55, 0.95}, mx, my)
+    game.mpLobbyLeave = mpButton(880, rowY2, 220, 50, "LEAVE",
+        {0.85, 0.35, 0.4}, mx, my)
 end
 
 function UI:mpLobbyClick(game, x, y)
@@ -4623,6 +4627,10 @@ function UI:mpLobbyClick(game, x, y)
             MP.startRun()
             -- Local transition happens via the phase-watcher in the next draw frame
         end
+        return
+    end
+    if within(game.mpLobbyLock) then
+        MP.toggleLock()
         return
     end
     if within(game.mpLobbyLeave) then

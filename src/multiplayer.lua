@@ -534,13 +534,25 @@ function MP.poll(dt)
         MP.lobby.capacity  = room.capacity or MP.lobby.capacity or 4
         local rs = room.state or {}
         MP.lobby.mode       = rs.mode or MP.lobby.mode or "last_stand"
-        MP.lobby.pvp        = (rs.pvp == 1) or (rs.pvp == true) or false
+        MP.lobby.pvp        = (rs.pvp == 1) or (rs.pvp == true) or MP.lobby.pvp or false
         MP.lobby.private    = (rs.private == 1) or (rs.private == true) or MP.lobby.private or false
-        MP.lobby.locked     = (rs.locked == 1) or (rs.locked == true) or false
         MP.lobby.difficulty = rs.difficulty or MP.lobby.difficulty or "normal"
         MP.lobby.finalWave  = tonumber(rs.final_wave) or MP.lobby.finalWave or 20
-        MP.lobby.phase      = rs.phase or MP.lobby.phase or "lobby"
-        MP.lobby.startedAt  = rs.started_at
+        -- Magic-print state mutations are last-write-wins with a propagation
+        -- delay, so room.json can come back stale right after a local
+        -- optimistic update and clobber it (e.g. phase=wave → phase=lobby).
+        -- Treat phase/locked/startedAt as forward-only: they latch on and
+        -- never get unset by a stale read.
+        local rsPhase = rs.phase or MP.lobby.phase or "lobby"
+        if MP.lobby.phase == "wave" or MP.lobby.phase == "ended" then
+            -- already advanced; only allow forward moves
+            if rsPhase == "ended" then MP.lobby.phase = "ended" end
+        else
+            MP.lobby.phase = rsPhase
+        end
+        local rsLocked = (rs.locked == 1) or (rs.locked == true)
+        MP.lobby.locked = MP.lobby.locked or rsLocked
+        MP.lobby.startedAt = MP.lobby.startedAt or rs.started_at
         if not MP.enabled and MP.lobby.roomId then MP.enabled = true end
         if MP._pendingSettings and MP.lobby.roomId and prev ~= MP.lobby.roomId then
             local s = MP._pendingSettings
@@ -568,7 +580,20 @@ function MP.poll(dt)
             MP.list = lr.rooms
             MP._lastList = love.timer.getTime()
         end
-        if lr.youUserId and not MP.localId then MP.localId = lr.youUserId end
+        if lr.youUserId and not MP.localId then
+            MP.localId = tostring(lr.youUserId)
+        end
+        -- Create echo: {ok=true, room={id,code,name,capacity,...}} —
+        -- populate MP.lobby IMMEDIATELY so the lobby screen can show
+        -- the code without waiting for room.json to materialise.
+        if lr.ok and lr.room and lr.room.code then
+            MP.lobby = MP.lobby or {}
+            MP.lobby.code     = MP.lobby.code     or lr.room.code
+            MP.lobby.name     = MP.lobby.name     or lr.room.name
+            MP.lobby.capacity = MP.lobby.capacity or lr.room.capacity or 8
+            MP.lobby.roomId   = MP.lobby.roomId   or lr.room.id or lr.room.roomId
+            if MP.lobby.roomId then MP.enabled = true end
+        end
         -- Surface a failed join so the UI can bail out of mp_lobby
         if MP._joinAt and not MP.lobby and lr.ok == false then
             MP._joinError = lr.error or lr.message or "lobby unavailable"
@@ -746,30 +771,41 @@ function MP.endSession()
     MP.session = nil
 end
 
--- Auto-cleanup tick: if we're alone in a started run and have been for a
--- while, flag the room dead so it stops appearing in anyone else's
--- browser. The portal evicts unresponsive members on a 60s heartbeat
--- lapse; this complements that by making the room itself unjoinable.
+-- Auto-cleanup tick: rooms self-terminate when nobody else is around.
+-- Two cases:
+--   * In-lobby (phase=lobby) AND alone for 60s → mark deleted=1 so the
+--     room stops appearing in everyone else's browser. We DON'T auto-leave
+--     because the player might just be waiting for friends.
+--   * In-wave (phase=wave) AND alone for 30s → mark deleted=1. Same idea.
+-- Together with the "leave on close" handler in main.lua, this is the
+-- closest we can get to "rooms murder themselves with no players" given
+-- the portal has no public delete-room verb.
 local _autoEndCheckAt = 0
+local _aloneSince = nil
 function MP._autoEndCheck()
-    if not MP.enabled or not MP.lobby then return end
-    if MP.lobby.phase ~= "wave" then return end
+    if not MP.enabled or not MP.lobby then
+        _aloneSince = nil
+        return
+    end
     local now = love.timer.getTime()
     if (now - _autoEndCheckAt) < 5 then return end
     _autoEndCheckAt = now
-    -- Count peers (other than me) who've checked in recently
     local activePeers = 0
     for id, peer in pairs(MP.peers) do
         if id ~= MP.localId and (now - (peer.last or now)) < MP.PEER_TIMEOUT then
             activePeers = activePeers + 1
         end
     end
-    -- Alone in a started room for 30s+ → mark deleted so the lobby
-    -- browser hides it for everyone else. We stay in our run; just the
-    -- room's public visibility ends.
-    if activePeers == 0 and MP.lobby.startedAt
-       and (now - MP.lobby.startedAt) > 30 then
+    if activePeers > 0 then
+        _aloneSince = nil
+        return
+    end
+    _aloneSince = _aloneSince or now
+    local aloneFor = now - _aloneSince
+    local threshold = (MP.lobby.phase == "wave") and 30 or 60
+    if aloneFor > threshold then
         emit("state " .. enc({deleted = 1}))
+        _aloneSince = nil
     end
 end
 
