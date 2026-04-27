@@ -4146,6 +4146,25 @@ function UI:drawMpMenu(game)
         love.graphics.setColor(0.6, 0.6, 0.7, 0.6)
         love.graphics.printf("No public lobbies right now.", listX, listY + rowH, listW, "center")
     else
+        -- Hide rooms that are dead, locked, or already started so the
+        -- list only shows lobbies you can actually join.
+        local visible = {}
+        for _, r in ipairs(rooms) do
+            local rs = r.state or {}
+            local phase = rs.phase or "lobby"
+            local locked = (rs.locked == 1) or (rs.locked == true)
+            local deleted = (rs.deleted == 1) or (rs.deleted == true)
+            local members = (r.memberCount or r.onlineCount or r.members or 0)
+            if not locked and not deleted and phase == "lobby" and members > 0 then
+                visible[#visible + 1] = r
+            end
+        end
+        rooms = visible
+        if #rooms == 0 then
+            love.graphics.setColor(0.6, 0.6, 0.7, 0.6)
+            love.graphics.printf("No open lobbies right now.",
+                listX, listY + rowH, listW, "center")
+        end
         for i, r in ipairs(rooms) do
             if i > 5 then break end
             local y = listY + (i - 1) * (rowH + 8)

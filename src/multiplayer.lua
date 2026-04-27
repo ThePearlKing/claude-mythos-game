@@ -385,10 +385,16 @@ function MP.applyLobbySettings(t)
 end
 
 -- Any member can flip this and broadcast — every client picks it up via
--- room.json and transitions into the wave together.
+-- room.json and transitions into the wave together. Also locks the room
+-- so the lobby browser hides it and new joiners bounce off.
 function MP.startRun()
-    emit("state " .. enc({phase = "wave", started_at = love.timer.getTime()}))
-    if MP.lobby then MP.lobby.phase = "wave" end
+    local now = love.timer.getTime()
+    emit("state " .. enc({phase = "wave", started_at = now, locked = 1}))
+    if MP.lobby then
+        MP.lobby.phase = "wave"
+        MP.lobby.startedAt = now
+        MP.lobby.locked = true
+    end
 end
 
 -- ============================================================
