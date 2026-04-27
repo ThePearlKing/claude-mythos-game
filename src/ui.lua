@@ -4558,6 +4558,7 @@ function UI:drawMpLobby(game)
         love.graphics.setColor(0.95, 0.95, 1)
         love.graphics.printf(MP.lobby.code, 0, 116, 1280, "center")
         love.graphics.setFont(self.font)
+        game._joinErrorAt = nil
     elseif MP.probed and not MP.connected then
         love.graphics.setColor(1, 0.85, 0.5)
         love.graphics.printf("YOU'RE RUNNING LOCALLY — NOT ON THE PORTAL", 0, 110, 1280, "center")
@@ -4577,8 +4578,6 @@ function UI:drawMpLobby(game)
             game._joinErrorAt = nil
             game.state = "mp_menu"
         end
-    else
-        game._joinErrorAt = nil
     else
         love.graphics.setColor(1, 1, 1, 0.55)
         love.graphics.printf("Waiting for the portal to materialise the room...",
