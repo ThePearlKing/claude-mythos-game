@@ -160,6 +160,33 @@ end
 function UI:drawCardChoice(game)
     love.graphics.setColor(0, 0, 0, 0.7)
     love.graphics.rectangle("fill", 0, 0, 1280, 720)
+    -- Multiplayer card-gate: after the local player has picked, the
+    -- card row is empty and we render a "waiting on N crabs" overlay
+    -- until everyone's caught up (Game:update advances when ready).
+    if game.mpWaiting then
+        love.graphics.setFont(self.bigFont)
+        love.graphics.setColor(0.55, 0.95, 0.7)
+        love.graphics.printf("WAITING FOR THE LOBBY", 0, 240, 1280, "center")
+        love.graphics.setFont(self.font)
+        love.graphics.setColor(1, 1, 1, 0.85)
+        local n = game.mpWaiting.stillWaitingFor or 0
+        local total = game.mpWaiting.totalAlive or 0
+        if n == 0 then
+            love.graphics.printf("Everyone's ready — advancing...", 0, 320, 1280, "center")
+        else
+            love.graphics.printf(
+                string.format("waiting on %d / %d other crab%s",
+                    n, total, total == 1 and "" or "s"),
+                0, 320, 1280, "center")
+        end
+        local elapsed = love.timer.getTime() - (game.mpWaiting.sinceTime or 0)
+        local remaining = math.max(0, 15 - elapsed)
+        love.graphics.setColor(1, 1, 1, 0.5)
+        love.graphics.printf(
+            string.format("auto-advances in %ds if any peer hangs", math.ceil(remaining)),
+            0, 360, 1280, "center")
+        return
+    end
     love.graphics.setFont(self.bigFont)
     love.graphics.setColor(1, 0.9, 0.3)
     love.graphics.printf("CHOOSE A CARD", 0, 40, 1280, "center")
@@ -4114,7 +4141,14 @@ function UI:drawMpMenu(game)
         return
     end
 
-    -- Connected layout
+    -- Connected layout. Toast above the join box if a recent join failed.
+    if MP._joinError then
+        love.graphics.setColor(0.20, 0.06, 0.06, 0.92)
+        love.graphics.rectangle("fill", 240, 142, 800, 28, 6, 6)
+        love.graphics.setColor(1, 0.55, 0.4)
+        love.graphics.printf("lobby code not found  —  " .. tostring(MP._joinError),
+            240, 148, 800, "center")
+    end
     local codeBoxX, codeBoxY, codeBoxW, codeBoxH = 360, 178, 360, 50
     love.graphics.setColor(0.12, 0.16, 0.26, 0.9)
     love.graphics.rectangle("fill", codeBoxX, codeBoxY, codeBoxW, codeBoxH, 8, 8)
@@ -4218,6 +4252,7 @@ function UI:mpMenuClick(game, x, y)
     if MP.probed and not MP.connected then return end
     if within(game.mpJoinBtn) then
         if game.mpJoinCode and #game.mpJoinCode >= 4 then
+            MP._joinError = nil
             MP.publishProfile(game.persist)
             MP.join(game.mpJoinCode)
             game.state = "mp_lobby"
@@ -4228,6 +4263,7 @@ function UI:mpMenuClick(game, x, y)
     for _, btn in ipairs(game.mpRoomBtns or {}) do
         if x >= btn.x and x <= btn.x + btn.w and y >= btn.y and y <= btn.y + btn.h then
             if btn.code then
+                MP._joinError = nil
                 MP.publishProfile(game.persist)
                 MP.join(btn.code)
                 game.state = "mp_lobby"
@@ -4532,8 +4568,17 @@ function UI:drawMpLobby(game)
         love.graphics.setColor(1, 0.55, 0.45)
         love.graphics.printf("THIS LOBBY NO LONGER EXISTS", 0, 110, 1280, "center")
         love.graphics.setColor(1, 0.85, 0.7, 0.85)
-        love.graphics.printf("(" .. tostring(MP._joinError) .. ")  —  hop back and refresh the lobby list.",
+        love.graphics.printf("(" .. tostring(MP._joinError) .. ")  —  back to lobby browser…",
             0, 138, 1280, "center")
+        -- Auto-bounce back to mp_menu after a brief beat so the user
+        -- can immediately try another code without needing to click LEAVE.
+        game._joinErrorAt = game._joinErrorAt or love.timer.getTime()
+        if (love.timer.getTime() - game._joinErrorAt) > 1.8 then
+            game._joinErrorAt = nil
+            game.state = "mp_menu"
+        end
+    else
+        game._joinErrorAt = nil
     else
         love.graphics.setColor(1, 1, 1, 0.55)
         love.graphics.printf("Waiting for the portal to materialise the room...",

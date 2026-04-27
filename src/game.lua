@@ -628,6 +628,34 @@ function Game:update(dt)
     if self.state ~= "wave" then
         if self.state == "cards" then
             self.cardArmTime = math.max(0, (self.cardArmTime or 0) - dt)
+            -- Multiplayer card-gate: hold here after the local player picks
+            -- until every peer's broadcast wave catches up to the next wave
+            -- (or until the 15s timeout fires so a hung peer can't deadlock).
+            -- Also keep broadcasting our position so peers see us alive and
+            -- waiting instead of frozen at the last wave's coordinates.
+            if self.mpWaiting and self.isMultiplayer and MP.enabled then
+                MP.sendPos(self.player, self.wave or 0)
+                local now = love.timer.getTime()
+                local target = self.mpWaiting.forWave
+                local stillWaitingFor = 0
+                local total = 0
+                for id, peer in pairs(MP.peers) do
+                    if id ~= MP.localId and peer.alive then
+                        total = total + 1
+                        if not peer.wave or peer.wave < target then
+                            stillWaitingFor = stillWaitingFor + 1
+                        end
+                    end
+                end
+                self.mpWaiting.stillWaitingFor = stillWaitingFor
+                self.mpWaiting.totalAlive = total
+                local elapsed = now - self.mpWaiting.sinceTime
+                if stillWaitingFor == 0 or elapsed > 15 then
+                    self.mpWaiting = nil
+                    self:beginWave(target)
+                    self.state = "wave"
+                end
+            end
         elseif self.state == "gameover" or self.state == "victory" then
             self.endTime = (self.endTime or 0) + dt
         end
@@ -1813,6 +1841,18 @@ function Game:pickCard(index)
         elseif c.id == "eld_voidsea" then
             pcall(MP.announceEvent, "voidsea_unlock")
         end
+        -- Wait-for-everyone gating: don't roll into the next wave until
+        -- every peer has also picked their card. Stay in the cards state
+        -- with a "waiting" overlay; Game:update advances us when peers'
+        -- broadcast wave catches up (via the pos verb's `w` field) or
+        -- after a 15-second timeout so a hung peer can't deadlock the
+        -- run.
+        self.mpWaiting = {
+            forWave = (self.wave or 0) + 1,
+            sinceTime = love.timer.getTime(),
+        }
+        self.cardChoices = {}
+        return
     end
     self:beginWave(self.wave + 1)
     self.state = "wave"

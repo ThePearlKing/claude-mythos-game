@@ -599,11 +599,12 @@ function MP.poll(dt)
             MP._joinError = lr.error or lr.message or "lobby unavailable"
         end
     end
-    -- Hard timeout: if a join request hasn't materialised a roomId in 5s,
-    -- assume the room no longer exists and surface the error.
+    -- Hard timeout: if a join request hasn't materialised a roomId in 3s,
+    -- assume the code is dead. The user-facing UI auto-bounces back to
+    -- the lobby browser so they can try a different code.
     if MP._joinAt and not (MP.lobby and MP.lobby.roomId) then
-        if (love.timer.getTime() - MP._joinAt) > 5 then
-            MP._joinError = MP._joinError or "lobby no longer exists"
+        if (love.timer.getTime() - MP._joinAt) > 3 then
+            MP._joinError = MP._joinError or "lobby code not found"
             MP._joinAt = nil
         end
     elseif MP.lobby and MP.lobby.roomId then
