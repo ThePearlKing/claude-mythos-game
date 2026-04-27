@@ -4078,7 +4078,7 @@ function UI:drawMpMenu(game)
             love.graphics.rectangle("fill", codeBoxX + codeBoxW / 2 + tw / 2 + 2, codeBoxY + 22, 2, 16)
         end
     end
-    game.mpJoinBox = {codeBoxX, codeBoxY, codeBoxW, codeBoxH}
+    game.mpJoinBox = {x = codeBoxX, y = codeBoxY, w = codeBoxW, h = codeBoxH}
     game.mpJoinBtn = mpButton(codeBoxX + codeBoxW + 12, codeBoxY, 180, codeBoxH,
         "JOIN", {0.3, 0.7, 0.95}, mx, my)
 
