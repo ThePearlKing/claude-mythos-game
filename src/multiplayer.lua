@@ -16,8 +16,8 @@ MP.MODES = {
         desc = "Die once and you spectate. Last crab standing wins."},
     {id = "rally",      name = "RALLY",
         desc = "Downed crabs become ghosts. Stand on one and hold R to revive them."},
-    {id = "endless",    name = "ENDLESS",
-        desc = "Respawn after 10s. If every crab is down at once, the run ends."},
+    {id = "endless",    name = "RESPAWN",
+        desc = "Respawn after 10s. The run still ends if every crab is down at once."},
 }
 
 function MP.modeById(id)

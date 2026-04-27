@@ -414,9 +414,9 @@ host.
   every crab in the lobby is down.
 - **RALLY** — dying turns you into a ghost. A teammate stands within
   60px and holds `R` for `2.0s` to revive you at 50% HP.
-- **ENDLESS** — die and respawn at center after `10s` with full HP and
+- **RESPAWN** — die and respawn at center after `10s` with full HP and
   2s of i-frames. **But** if the lobby is wiped simultaneously, the
-  run still ends.
+  run still ends — so it's not truly endless.
 
 ### PVP toggle
 

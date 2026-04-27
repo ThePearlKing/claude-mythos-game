@@ -4453,8 +4453,11 @@ end
 function UI:mpCreateText(game, text)
     if not text then return end
     local s = game.mpDraft.name or ""
+    -- Accept everything except newlines / carriage returns. The previous
+    -- [%w%s%p] filter was meant to reject control chars but in some
+    -- LuaJIT builds it dropped the space character outright.
     for c in text:gmatch(".") do
-        if #s < 28 and (c:match("[%w%s%p]") and c ~= "\n") then s = s .. c end
+        if #s < 28 and c ~= "\n" and c ~= "\r" then s = s .. c end
     end
     game.mpDraft.name = s
 end
@@ -4545,7 +4548,12 @@ function UI:drawMpLobby(game)
             handle = (p and p.handle) or "?"
             alive = p and p.alive
         end
-        drawMiniCrab(x + cellW / 2, y + cellH / 2 - 10, 2.0, cosmetics, t, alive)
+        -- Use the canonical preview-crab renderer so lobby roster shows the
+        -- exact customised skin (body pattern, eyes, claws, hat, trail, gun)
+        -- the player will actually run with — not the simplified mini-crab.
+        if alive == false then love.graphics.setColor(1, 1, 1, 0.5) end
+        drawPreviewCrab(x + cellW / 2, y + cellH / 2 - 10, 1.7, cosmetics, t)
+        love.graphics.setColor(1, 1, 1, 1)
         love.graphics.setColor(1, 1, 1)
         love.graphics.printf(handle or "Crab", x, y + cellH - 50, cellW, "center")
         if id == MP.localId or id == "self" then
