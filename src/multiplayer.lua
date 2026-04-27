@@ -444,6 +444,14 @@ function MP._handleEvent(evt)
         table.insert(MP.events, peer.handle .. " took " .. tostring(p.name or p.id or "a card"))
     elseif v == "wave" and peer then
         peer.wave = tonumber(p.w) or peer.wave
+    elseif v == "mp_event" then
+        -- Stash for game.lua to consume next frame. Each entry has a kind
+        -- field the game.lua dispatcher uses to apply local FX + permanent
+        -- effects (Ugnrak unlock, Void Sea unlock, King ending, etc.).
+        MP.pendingEvents = MP.pendingEvents or {}
+        p._from = from
+        p._handle = peer and peer.handle or nil
+        table.insert(MP.pendingEvents, p)
     elseif v == "chat" and peer then
         local msg = tostring(p.text or "")
         if #msg > 0 then
@@ -648,6 +656,18 @@ function MP.announceCard(card)
     emitSend("cardpick", {id = card.id, name = card.name})
 end
 
+-- Broadcast a "world event" (King ending, Ugnrak fire, Void Sea unlock,
+-- Cthulhu beam, etc.) so every peer's local sim mirrors the cinematic
+-- + applies whatever permanent effect makes sense ("you also unlocked
+-- Void Sea", "Ugnrak Beam visual fires across your screen too", ...).
+MP.pendingEvents = MP.pendingEvents or {}
+function MP.announceEvent(kind, payload)
+    if not MP.enabled or not kind then return end
+    payload = payload or {}
+    payload.kind = kind
+    emitSend("mp_event", payload)
+end
+
 function MP.announceDeath()
     if not MP.enabled then return end
     emitSend("dead", {at = love.timer.getTime()})
@@ -724,62 +744,26 @@ end
 
 function MP.draw(game)
     if not MP.enabled then return end
+    local UI = require("src.ui")
     local t = love.timer.getTime()
     local pvpOn = MP.lobby and MP.lobby.pvp
     for id, peer in pairs(MP.peers) do
         if id ~= MP.localId then
             local x, y = peer.dispX or peer.x, peer.dispY or peer.y
-            local col = (peer.cosmetics and Cosmetics.bodyColor(peer.cosmetics))
-                or {0.6, 0.65, 0.95}
-            local outline = (peer.cosmetics and Cosmetics.outlineColor(peer.cosmetics, col))
-                or {col[1] * 0.55, col[2] * 0.45, col[3] * 0.35}
+            local cos = peer.cosmetics
+                or {body="orange", eye="normal", claw="normal", hat="none", trail="none", gun="pistol"}
+            local col = Cosmetics.bodyColor(cos)
             local alpha = peer.alive and 1.0 or 0.45
-            -- Halo glow
-            love.graphics.setColor(col[1], col[2], col[3], 0.18 * alpha)
-            love.graphics.circle("fill", x, y, 28)
-            -- Legs (per-peer phase so they don't all march in lockstep)
-            love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
-            love.graphics.setLineWidth(3)
-            for side = -1, 1, 2 do
-                for i = 1, 3 do
-                    local sway = math.sin(t * 4 + i * 0.7 + (id or 0) * 0.3) * 2.2
-                    local bx = side * (10 + i * 2)
-                    local by = (i - 2) * 4
-                    love.graphics.line(bx, by, side * (16 + i * 2), by + 8 + sway)
-                end
-            end
-            -- Body
-            love.graphics.setColor(col[1], col[2], col[3], alpha)
-            love.graphics.circle("fill", x, y, 16)
-            love.graphics.setColor(col[1] * 1.2, col[2] * 1.2, col[3] * 1.2, alpha * 0.7)
-            love.graphics.ellipse("fill", x, y - 4, 12, 6)
-            love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
-            love.graphics.setLineWidth(2)
-            love.graphics.circle("line", x, y, 16)
-            -- Pincer hint
-            love.graphics.setColor(col[1], col[2], col[3], alpha)
-            love.graphics.ellipse("fill", x - 22, y - 6, 6, 4)
-            love.graphics.ellipse("fill", x + 22, y - 6, 6, 4)
-            love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
-            love.graphics.ellipse("line", x - 22, y - 6, 6, 4)
-            love.graphics.ellipse("line", x + 22, y - 6, 6, 4)
-            -- Eye stalks
-            love.graphics.setColor(outline[1], outline[2], outline[3], alpha)
-            love.graphics.line(x - 5, y - 12, x - 6, y - 18)
-            love.graphics.line(x + 5, y - 12, x + 6, y - 18)
+            -- Render the exact same preview-crab the menu and customise
+            -- screens use, so peer crabs match the local player's visual
+            -- style instead of a hand-rolled sprite. drawCrab handles
+            -- body / pattern / legs / claws / eyes / hat / trail itself.
             love.graphics.setColor(1, 1, 1, alpha)
-            love.graphics.circle("fill", x - 6, y - 18, 2.6)
-            love.graphics.circle("fill", x + 6, y - 18, 2.6)
-            love.graphics.setColor(0, 0, 0, alpha)
-            love.graphics.circle("fill", x - 6, y - 18, 1.2)
-            love.graphics.circle("fill", x + 6, y - 18, 1.2)
-            -- Hat hint (just a colored cap if anything but "none")
-            if peer.cosmetics and peer.cosmetics.hat and peer.cosmetics.hat ~= "none" then
-                love.graphics.setColor(0.95, 0.85, 0.4, alpha)
-                love.graphics.ellipse("fill", x, y - 22, 9, 3)
-                love.graphics.rectangle("fill", x - 5, y - 28, 10, 6, 1, 1)
-            end
-            love.graphics.setLineWidth(1)
+            UI.drawCrab(x, y, 1.0, cos, t)
+            love.graphics.setColor(1, 1, 1, 1)
+            -- Soft halo behind so peers stay readable even on busy backgrounds
+            love.graphics.setColor(col[1], col[2], col[3], 0.12 * alpha)
+            love.graphics.circle("fill", x, y, 26)
             -- Floating name + hp wisp. Bobs slightly above the head, no box,
             -- soft shadow so it stays readable on any background without
             -- obstructing combat.

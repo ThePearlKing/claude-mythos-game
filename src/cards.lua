@@ -345,7 +345,7 @@ Cards.pool = {
     -- shards, it backfires and obliterates you with 12s of persistent
     -- ripples+fractals over every menu after death.
     {id="eld_ugnrak", name="Ugnrak Beam", rarity="eldritch", color={1,0.1,0.15}, eldritch=true,
-        requiresEldritch=24, oncePerRun=true,
+        requiresEldritch=6, oncePerRun=true,
         desc="+24 eldritch. Press B to fire a colossal red beam. Costs 6 Reality Shards or BACKFIRES.",
         apply=function(p) p.ugnrakBeam = true; require("src.eldritch").gainLevel(p, 24) end},
 

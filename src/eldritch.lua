@@ -335,6 +335,13 @@ function Eldritch.update(state, dt, game)
                     c.phase = "dying"
                 else
                     c.phase = "fire"; c.timer = 0
+                    -- Multiplayer: broadcast so every peer also gets the
+                    -- "your Cthulhu is screaming" feel, even though their
+                    -- local Cthulhu may be at a different phase.
+                    local ok, MP = pcall(require, "src.multiplayer")
+                    if ok and MP and MP.enabled then
+                        pcall(MP.announceEvent, "cthulhu_beam")
+                    end
                 end
             end
         elseif c.phase == "fire" then

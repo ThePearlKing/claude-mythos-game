@@ -728,6 +728,46 @@ function Game:update(dt)
 
     -- ===== Multiplayer per-frame plumbing during a wave =====
     if self.isMultiplayer and MP.enabled then
+        -- Drain any incoming world-events broadcast by peers and mirror the
+        -- effect locally so big moments (King, Ugnrak, Void Sea, Cthulhu)
+        -- are felt by everyone in the lobby.
+        if MP.pendingEvents and #MP.pendingEvents > 0 then
+            for _, evt in ipairs(MP.pendingEvents) do
+                local who = evt._handle or "A peer"
+                if evt.kind == "king" then
+                    -- Trigger the same FX storm the local King ending uses
+                    self.screenFlashHold = math.max(self.screenFlashHold or 0, 6)
+                    self.kingFractalHold = math.max(self.kingFractalHold or 0, 12)
+                    p.kingVisions = true
+                    Fx.fractalBurst("#9933cc", 2200)
+                    Fx.flashbang(900)
+                    P:text(640, 200, who .. " GLIMPSED THE KING", {0.8, 0.5, 1}, 3)
+                elseif evt.kind == "ugnrak_unlock" then
+                    p.ugnrakBeam = true
+                    Fx.glow("#ff2233", 0.7, 1400)
+                    P:text(640, 220, who .. " UNLOCKED UGNRAK BEAM", {1, 0.3, 0.2}, 3)
+                elseif evt.kind == "ugnrak_fire" then
+                    -- Spawn the same beam visual on this client (no damage)
+                    self.ugnrakBeamFx = {
+                        x1 = tonumber(evt.x1) or 0, y1 = tonumber(evt.y1) or 0,
+                        x2 = tonumber(evt.x2) or 1280, y2 = tonumber(evt.y2) or 720,
+                        life = 0.6, max = 0.6, giant = false,
+                    }
+                    Fx.spread("#ff2233", 1100, 8)
+                elseif evt.kind == "voidsea_unlock" then
+                    p.voidSeaUnlocked = true
+                    if self.persist then self.persist.voidSeaEverUnlocked = 1 end
+                    Fx.glow("#66e0ff", 0.6, 1500)
+                    P:text(640, 220, who .. " UNLOCKED THE VOID SEA", {0.5, 0.95, 1}, 3)
+                elseif evt.kind == "cthulhu_beam" then
+                    -- Inbound informational beam visual sweeping in from above
+                    Fx.shake(0.45, 600)
+                    Fx.fractalBurst("#aa33ff", 1400)
+                    P:text(640, 200, who .. "'S CTHULHU SCREAMS", {0.7, 0.3, 1}, 3)
+                end
+            end
+            MP.pendingEvents = {}
+        end
         -- Apply queued PvP damage from peers (clamped, runs through normal damage so
         -- thorns/dodge etc. still trigger but at reduced potency).
         local sess = MP.session
@@ -1760,7 +1800,18 @@ function Game:pickCard(index)
     end
     Audio:play("select")
     P:text(self.player.x, self.player.y, c.name, Cards.rarityColor(c.rarity), 2)
-    if self.isMultiplayer and MP.enabled then pcall(MP.announceCard, c) end
+    if self.isMultiplayer and MP.enabled then
+        pcall(MP.announceCard, c)
+        -- World-event cards: broadcast so every peer also lights up the
+        -- King ending / unlocks Void Sea / gets the Ugnrak Beam ability.
+        if c.id == "eld_king" then
+            pcall(MP.announceEvent, "king")
+        elseif c.id == "eld_ugnrak" then
+            pcall(MP.announceEvent, "ugnrak_unlock")
+        elseif c.id == "eld_voidsea" then
+            pcall(MP.announceEvent, "voidsea_unlock")
+        end
+    end
     self:beginWave(self.wave + 1)
     self.state = "wave"
 end
@@ -1781,6 +1832,16 @@ function Game:fireUgnrakBeam()
     local p = self.player
     p.ugnrakBeam = false -- spent either way
     Achievements.fire("ugnrak_fired")
+    -- Multiplayer: broadcast a visual cinematic event so every peer sees
+    -- the same crimson beam streak across their own screen (no damage on
+    -- their side — informational/feel only).
+    if self.isMultiplayer and MP.enabled then
+        pcall(MP.announceEvent, "ugnrak_fire", {
+            x1 = p.x, y1 = p.y,
+            x2 = p.x + math.cos(p.angle or 0) * 1400,
+            y2 = p.y + math.sin(p.angle or 0) * 1400,
+        })
+    end
     local shards
     if self.isCustom then
         shards = self.tempShards or 0

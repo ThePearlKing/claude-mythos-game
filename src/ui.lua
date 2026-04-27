@@ -4624,4 +4624,11 @@ function UI:mpLobbyKey(game, key)
     end
 end
 
+-- Expose the canonical preview crab renderer (the same one the menu and
+-- customise screens use) so other systems — multiplayer peer crabs in
+-- particular — can render the exact same crab visual instead of a
+-- separate sprite. Single source of truth for "what does my crab look
+-- like outside of the wave loop".
+UI.drawCrab = drawPreviewCrab
+
 return UI
