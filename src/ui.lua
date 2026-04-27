@@ -4677,12 +4677,28 @@ function UI:drawMpLobby(game)
 
     -- Bottom buttons
     local rowY2 = 644
-    game.mpLobbyStart = mpButton(200, rowY2, 220, 50, "START RUN",
-        {0.4, 0.95, 0.55}, mx, my)
-    local locked = MP.lobby and MP.lobby.locked
-    game.mpLobbyLock  = mpButton(540, rowY2, 220, 50,
-        locked and "UNLOCK" or "LOCK LOBBY",
-        locked and {0.95, 0.7, 0.3} or {0.5, 0.55, 0.95}, mx, my)
+    -- Only the host (the player who created the lobby) can press START
+    -- and toggle LOCK. Everyone else sees a small "host: name" hint
+    -- where the host buttons would be.
+    local isHost = (MP.lobby and MP.lobby.hostId
+        and tostring(MP.localId or "") == tostring(MP.lobby.hostId))
+    if isHost then
+        game.mpLobbyStart = mpButton(200, rowY2, 220, 50, "START RUN",
+            {0.4, 0.95, 0.55}, mx, my)
+        local locked = MP.lobby and MP.lobby.locked
+        game.mpLobbyLock  = mpButton(540, rowY2, 220, 50,
+            locked and "UNLOCK" or "LOCK LOBBY",
+            locked and {0.95, 0.7, 0.3} or {0.5, 0.55, 0.95}, mx, my)
+    else
+        game.mpLobbyStart, game.mpLobbyLock = nil, nil
+        local hostName = "host"
+        if MP.lobby and MP.lobby.hostId and MP.peers[MP.lobby.hostId] then
+            hostName = MP.peers[MP.lobby.hostId].handle or hostName
+        end
+        love.graphics.setColor(1, 1, 1, 0.6)
+        love.graphics.printf("waiting on " .. hostName .. " to start the run",
+            200, rowY2 + 16, 600, "center")
+    end
     game.mpLobbyLeave = mpButton(880, rowY2, 220, 50, "LEAVE",
         {0.85, 0.35, 0.4}, mx, my)
 end

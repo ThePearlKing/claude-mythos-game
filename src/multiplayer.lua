@@ -319,9 +319,11 @@ end
 function MP.create(name, opts)
     name = (name and name ~= "" and name) or "Crab Lobby"
     MP._pendingSettings = opts or {}
+    -- Mark ourselves as the host. The host id rides in room.state so every
+    -- joiner sees the same value, and the lobby UI uses it to gate the
+    -- START button (only the host can launch).
+    MP._pendingSettings.hostId = MP.localId or "self"
     MP._connectGrace = love.timer.getTime() + 6
-    -- Private lobbies use the "unlisted" verb form so they don't appear in
-    -- the public room list — only people with the 6-char code can join.
     if opts and opts.private then
         emit("create unlisted " .. name)
     else
@@ -385,6 +387,7 @@ function MP.applyLobbySettings(t)
         difficulty = t.difficulty or (MP.lobby and MP.lobby.difficulty) or "normal",
         final_wave = t.finalWave or (MP.lobby and MP.lobby.finalWave) or 20,
         capacity = t.capacity or (MP.lobby and MP.lobby.capacity) or 4,
+        host_id = t.hostId or (MP.lobby and MP.lobby.hostId) or MP.localId,
     }
     emit("state " .. enc(patch))
     if MP.lobby then
@@ -393,6 +396,7 @@ function MP.applyLobbySettings(t)
         MP.lobby.difficulty = patch.difficulty
         MP.lobby.finalWave = patch.final_wave
         MP.lobby.capacity = patch.capacity
+        MP.lobby.hostId = patch.host_id and tostring(patch.host_id) or MP.lobby.hostId
     end
 end
 
@@ -536,6 +540,9 @@ function MP.poll(dt)
         MP.lobby.mode       = rs.mode or MP.lobby.mode or "last_stand"
         MP.lobby.pvp        = (rs.pvp == 1) or (rs.pvp == true) or MP.lobby.pvp or false
         MP.lobby.private    = (rs.private == 1) or (rs.private == true) or MP.lobby.private or false
+        if rs.host_id ~= nil then
+            MP.lobby.hostId = tostring(rs.host_id)
+        end
         MP.lobby.difficulty = rs.difficulty or MP.lobby.difficulty or "normal"
         MP.lobby.finalWave  = tonumber(rs.final_wave) or MP.lobby.finalWave or 20
         -- Magic-print state mutations are last-write-wins with a propagation
