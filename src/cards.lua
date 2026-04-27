@@ -582,6 +582,13 @@ function Cards.pick(n, wave, player, disableEldritch, finalWave, persist)
         local playerLvl = (player and player.eldritch and player.eldritch.level) or 0
         for _, c in ipairs(Cards.pool) do
             local gated = c.requiresEldritch and playerLvl < c.requiresEldritch
+            -- Reality Shard champions bypass the Ugnrak Beam's high
+            -- eldritch gate — at requiresEldritch=24 the card almost
+            -- never surfaced in normal play even once shards were
+            -- maxed. Owning all 6 means you ARE the Ugnrak path.
+            if c.id == "eld_ugnrak" and persist and (persist.realityShards or 0) >= 6 then
+                gated = false
+            end
             -- HARD RULE: no eldritch-RARITY cards at level 0 (kickstarter is rare, not eldritch)
             local lockedByLevel = (playerLvl == 0 and c.rarity == "eldritch")
             -- HARD RULE: max 1 eldritch-rarity card per offer set — always leave room for normal cards
