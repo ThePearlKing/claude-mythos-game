@@ -1842,11 +1842,18 @@ function Game:fireUgnrakBeam()
             y2 = p.y + math.sin(p.angle or 0) * 1400,
         })
     end
+    -- Lifetime Reality Shards count toward firing in EVERY mode (custom
+    -- and normal alike). The bug was that custom runs only checked
+    -- self.tempShards which starts at 0 per run, so a player with 6
+    -- lifetime shards instantly backfired on the first fire in custom.
+    -- Custom mode doesn't decrement persist (custom runs don't progress
+    -- shards in either direction), so it's effectively unlimited fires.
+    local lifetime = (self.persist and self.persist.realityShards) or 0
     local shards
     if self.isCustom then
-        shards = self.tempShards or 0
+        shards = math.max(self.tempShards or 0, lifetime)
     else
-        shards = (self.persist and self.persist.realityShards) or 0
+        shards = lifetime
     end
     if shards >= 6 then
         -- Ugnrak Beam fires: chrome goes full crimson dread for a beat.
@@ -1856,7 +1863,9 @@ function Game:fireUgnrakBeam()
         Fx.pulsate("#ff1122", 56, 0.5)
         Fx.vignette(0.75, 1800)
         if self.isCustom then
-            self.tempShards = shards - 6
+            -- Custom is a sandbox — don't touch lifetime shards. Decrement
+            -- only the in-run counter for cosmetic correctness.
+            self.tempShards = math.max(0, (self.tempShards or 0) - 6)
         else
             self.persist.realityShards = shards - 6
             Save.save(self.persist)
