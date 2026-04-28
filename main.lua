@@ -24,6 +24,10 @@ function love.load()
     love.graphics.setDefaultFilter("nearest", "nearest")
     math.randomseed(os.time())
     love.mouse.setVisible(true)  -- menus use OS cursor; game state hides it
+    -- Enable keyboard key-repeat so holding space (or any key) in text
+    -- inputs like the lobby-name field actually appends repeatedly. Wave
+    -- state actions like dash/bomb are guarded against repeats below.
+    love.keyboard.setKeyRepeat(true)
 
     gameCanvas = love.graphics.newCanvas(GAME_W, GAME_H)
     gameCanvas:setFilter("linear", "linear")
@@ -214,7 +218,21 @@ function love.draw()
     love.graphics.draw(gameCanvas, fitOffX, fitOffY, 0, fitScale, fitScale)
 end
 
-function love.keypressed(key)
+function love.keypressed(key, scancode, isrepeat)
+    -- Wave-state action keys shouldn't auto-fire while held; only text
+    -- inputs benefit from repeats. Filter dash/bomb/quit-style keys when
+    -- isrepeat is true so they only react to the initial press.
+    if isrepeat then
+        if Game.state == "wave"
+            and (key == "space" or key == "q" or key == "b") then
+            return
+        end
+        if Game.state ~= "mp_create"
+            and not (Game.state == "wave" and Game.chat and Game.chat.open) then
+            -- For most other states, only allow backspace to repeat
+            if key ~= "backspace" then return end
+        end
+    end
     if key == "escape" then
         if Game.state == "wave" or Game.state == "voidsea" then
             Game._resumeTo = Game.state

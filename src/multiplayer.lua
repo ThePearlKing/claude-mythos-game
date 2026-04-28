@@ -363,11 +363,10 @@ function MP.create(name, opts)
     -- START button (only the host can launch).
     MP._pendingSettings.hostId = MP.localId or "self"
     MP._connectGrace = love.timer.getTime() + 6
-    if opts and opts.private then
-        emit("create unlisted " .. name)
-    else
-        emit("create lobby " .. name)
-    end
+    -- Emit just the name — no leading "lobby" / "unlisted" keyword. The
+    -- portal was treating the visibility token as part of the room name,
+    -- which is why every host's room ended up displayed as "lobby Foo".
+    emit("create " .. name)
 end
 
 -- Toggle the lobby's locked flag. Locked rooms are still visible to current
