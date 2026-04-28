@@ -54,7 +54,17 @@ MP._lastList    = 0
 MP._inboxLen    = 0
 MP._connectGrace = 0
 
-local NET = "__loveweb__/net"
+-- Canonical portal path is `loveweb/net/`. Older wrappers used
+-- `__loveweb__/net/` with leading/trailing underscores. We try the
+-- canonical layout first and fall back to the legacy one so MP works
+-- across portal versions without a flag day.
+local NET_DIRS = {"loveweb/net", "__loveweb__/net"}
+local NET = NET_DIRS[1]
+local IDENTITY_PATHS = {
+    "loveweb/net/identity.json",
+    "loveweb/identity.json",
+    "__loveweb__/identity.json",
+}
 
 -- ============================================================
 -- Tiny JSON encoder/decoder (sufficient for the portal payloads
@@ -197,16 +207,43 @@ local function emitSend(verb, payload)
     print("[[LOVEWEB_NET]]send " .. verb .. " " .. enc(payload or {}))
 end
 
-local function readJson(path)
+-- Read from the first net dir that has the file. We probe both layouts so
+-- code below can call readJson("/room.json") without caring about the path.
+local function readJson(rel)
     if not (love and love.filesystem and love.filesystem.getInfo) then return nil end
-    if not love.filesystem.getInfo(path) then return nil end
-    return parseJson(love.filesystem.read(path))
+    -- Absolute-ish path passthrough (used for identity.json fallbacks)
+    if rel:sub(1, 1) ~= "/" then
+        if love.filesystem.getInfo(rel) then
+            return parseJson(love.filesystem.read(rel))
+        end
+        return nil
+    end
+    for _, base in ipairs(NET_DIRS) do
+        local full = base .. rel
+        if love.filesystem.getInfo(full) then
+            NET = base
+            return parseJson(love.filesystem.read(full))
+        end
+    end
+    return nil
 end
 
-local function readText(path)
+local function readText(rel)
     if not (love and love.filesystem and love.filesystem.getInfo) then return nil end
-    if not love.filesystem.getInfo(path) then return nil end
-    return love.filesystem.read(path)
+    if rel:sub(1, 1) ~= "/" then
+        if love.filesystem.getInfo(rel) then
+            return love.filesystem.read(rel)
+        end
+        return nil
+    end
+    for _, base in ipairs(NET_DIRS) do
+        local full = base .. rel
+        if love.filesystem.getInfo(full) then
+            NET = base
+            return love.filesystem.read(full)
+        end
+    end
+    return nil
 end
 
 -- ============================================================
@@ -226,7 +263,9 @@ function MP.detect()
         MP._probeStart = love.timer.getTime()
     end
     MP.connected = love.filesystem.getInfo(NET) ~= nil
-        or love.filesystem.getInfo(NET .. "/status.json") ~= nil
+        or love.filesystem.getInfo(NET_DIRS[1]) ~= nil
+        or love.filesystem.getInfo(NET_DIRS[1] .. "/status.json") ~= nil
+        or love.filesystem.getInfo(NET_DIRS[2] .. "/status.json") ~= nil
     return MP.connected
 end
 
@@ -493,9 +532,16 @@ function MP.poll(dt)
     -- files DO appear later (slow init), unlock and reconnect — emits
     -- start flowing again.
     local now = love.timer.getTime()
-    local netExists = love.filesystem.getInfo(NET)
-        or love.filesystem.getInfo(NET .. "/status.json")
-        or love.filesystem.getInfo(NET .. "/last_result.json")
+    local function existsAny(suffix)
+        for _, base in ipairs(NET_DIRS) do
+            if love.filesystem.getInfo(base .. suffix) then return true end
+        end
+        return false
+    end
+    local netExists = existsAny("")
+        or existsAny("/status.json")
+        or existsAny("/last_result.json")
+        or love.filesystem.getInfo("loveweb/identity.json")
         or love.filesystem.getInfo("__loveweb__/identity.json")
     if not MP.probed then
         local started = MP._probeStart or now
@@ -518,7 +564,11 @@ function MP.poll(dt)
     -- otherwise a number/string mismatch makes the local user render
     -- as a fake peer with no fetched profile.
     if not MP.localId then
-        local idj = readJson("__loveweb__/identity.json")
+        local idj
+        for _, p in ipairs(IDENTITY_PATHS) do
+            idj = readJson(p)
+            if idj then break end
+        end
         if idj then
             local uid = idj.userId or idj.id or idj.user_id
             if uid ~= nil then MP.localId = tostring(uid) end
@@ -528,7 +578,7 @@ function MP.poll(dt)
         end
     end
     -- Room file
-    local room = readJson(NET .. "/room.json")
+    local room = readJson("/room.json")
     if room then
         MP.lobby = MP.lobby or {}
         local prev = MP.lobby.roomId
@@ -581,7 +631,7 @@ function MP.poll(dt)
     end
 
     -- Most-recent verb result (rooms list, create echoes, errors)
-    local lr = readJson(NET .. "/last_result.json")
+    local lr = readJson("/last_result.json")
     if lr then
         if lr.rooms then
             MP.list = lr.rooms
@@ -621,7 +671,7 @@ function MP.poll(dt)
     -- Roster / presence. All userIds normalised to strings so peer keys
     -- match identity.json's MP.localId regardless of how the portal
     -- happens to type its values today.
-    local roster = readJson(NET .. "/roster.json")
+    local roster = readJson("/roster.json")
     if roster and roster.members then
         local seen = {}
         for _, m in ipairs(roster.members) do
@@ -660,7 +710,7 @@ function MP.poll(dt)
     -- Per-peer profile fetches (cosmetics)
     for id, p in pairs(MP.peers) do
         if p.cosmeticsRequested and not p.cosmetics then
-            local pf = readJson(NET .. "/profiles/" .. tostring(id) .. ".json")
+            local pf = readJson("/profiles/" .. tostring(id) .. ".json")
             if pf then
                 local prof = pf.profile or pf
                 if type(prof) == "string" then prof = parseJson(prof) end
@@ -673,7 +723,7 @@ function MP.poll(dt)
     end
 
     -- Inbox events (new lines only)
-    local s = readText(NET .. "/inbox.jsonl")
+    local s = readText("/inbox.jsonl")
     if s then
         if #s < MP._inboxLen then MP._inboxLen = 0 end -- file rotated
         if #s > MP._inboxLen then
