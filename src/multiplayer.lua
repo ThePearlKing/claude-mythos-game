@@ -525,11 +525,6 @@ function MP._handleEvent(evt)
 end
 
 function MP.poll(dt)
-    -- Boot-time probe: 5s grace for the portal to write any response file
-    -- (last_result.json appears even before the first room is created).
-    -- After the grace, lock as offline if nothing showed up. If portal
-    -- files DO appear later (slow init), unlock and reconnect — emits
-    -- start flowing again.
     local now = love.timer.getTime()
     local function existsAny(suffix)
         for _, base in ipairs(NET_DIRS) do
@@ -554,7 +549,13 @@ function MP.poll(dt)
     elseif not MP.connected and netExists then
         MP.connected = true
     end
-    if MP.probed and not MP.connected then return end
+    -- IMPORTANT: keep polling even when MP.probed says "not connected".
+    -- The portal can write its first response file at any moment (slow
+    -- first connection, the user signing in late, the wrapper reattaching
+    -- after a refresh) and we want to pick it up the moment it lands —
+    -- not stay locked out forever just because the boot probe missed.
+    -- The connected flag still gates EMIT (so desktop terminals don't
+    -- spam), but reads always run.
 
     -- Local identity: the portal writes signed-in user info to
     -- __loveweb__/identity.json. We use that to recognise ourselves in
@@ -692,9 +693,16 @@ function MP.poll(dt)
                 end
                 p.handle = m.handle or p.handle
                 if id == MP.localId and m.handle then MP.localHandle = m.handle end
-                if id ~= MP.localId and not p.cosmetics and not p.cosmeticsRequested then
-                    emit("profile " .. id)
-                    p.cosmeticsRequested = true
+                -- Re-fire profile fetches every ~6s until we have the
+                -- peer's cosmetics. The first request can be lost during
+                -- the portal's initial sign-in handshake, leaving peers
+                -- stuck at default-orange forever; retrying is cheap.
+                if id ~= MP.localId and not p.cosmetics then
+                    if not p._profileAt or (now - p._profileAt) > 6 then
+                        emit("profile " .. id)
+                        p._profileAt = now
+                        p.cosmeticsRequested = true
+                    end
                 end
             end
         end
